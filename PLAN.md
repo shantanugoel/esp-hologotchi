@@ -145,10 +145,56 @@ The renderer should start simple: full-frame RGB565 framebuffer, integer-friendl
    - Music or media state where easy.
    - Notification/calendar integrations later.
 
-6. Polish for viral demos.
+6. Polish for demos.
    - Script repeatable demo scenarios.
    - Tune animation timing and color palettes for video.
    - Document wiring, flashing, and running the agent.
+
+## V2+ Architecture
+
+The v1 host/device split should be the foundation for a longer-lived pet, not just a one-shot reaction renderer. Later versions should treat the model as a controller for state and behavior, not only as a source of mood labels.
+
+### Persistent Pet State
+
+- Keep the host as the canonical owner of long-term pet state.
+- Model state should include fields such as mood, energy, hunger, attention, trust, boredom, recent interactions, and cooldowns.
+- Device state should stay lightweight: current scene, current animation, short-lived effect timers, and the minimal mirror of host state needed for rendering.
+- State changes should be event-driven and explicit so the model can intentionally cause decay, recovery, memory updates, and status shifts over time.
+
+### Asynchronous Behaviors
+
+- Separate “model produced an intent” from “pet is actually doing it now.”
+- Add a behavior scheduler on the host that can queue, interrupt, defer, and resume behaviors.
+- Behaviors should have triggers, durations, cooldowns, priorities, and optional preconditions.
+- This is the layer that turns the pet from prebaked reactions into a creature that can continue acting after the original event has passed.
+
+### Extensible Inputs
+
+- Normalize all inputs into a shared versioned event schema before they reach the model.
+- Add adapters for active app/window, terminal/build/test events, notifications, music/media, and later sensor inputs.
+- New input sources should only require a new adapter and schema mapping, not a redesign of the model contract.
+- Keep the model prompt centered on recent events plus the current pet state, rather than hardcoding source-specific logic everywhere.
+
+### Graphics Abstraction
+
+- Do not hardcode every arbitrary object as a firmware-native special case.
+- Use a layered scene protocol so the host can express graphics as primitives, reusable named assets, or uploaded sprites.
+- Recommended scene capabilities for later versions:
+  - primitive shapes: line, rect, circle, polygon, text
+  - reusable asset references: icons, symbols, recurring props
+  - transforms: position, scale, rotation, flip
+  - layers: foreground, background, effect layers
+  - optional animation keyframes for short sequences
+- A “house” should usually be composed from primitives or a reusable asset, not baked as a one-off firmware behavior.
+- Only use raw frame streaming as an escape hatch for special cases; it should not be the default graphics path.
+
+### Host/Model Strategy
+
+- Keep backend, model family, and preset separate so the same control logic can run against Ollama, llama.cpp, LM Studio, or MLX-backed runtimes.
+- Default family remains `qwen3.5`.
+- Default preset remains `qwen3.5:4b`, with `qwen3.5:2b` as the low-memory fallback.
+- Prefer MLX-backed variants on macOS when they materially improve responsiveness or memory use on Apple Silicon.
+- Preserve the ability to swap to another family later if a better small model appears.
 
 ## Testing And Acceptance
 
@@ -175,6 +221,7 @@ V1 acceptance criteria:
 ## Open Questions For Later
 
 - Whether Wi-Fi should become a first-class V2 transport or remain optional.
-- Whether the pet should gain persistent life-sim state such as hunger, sleep, memory, and routines.
-- Whether to add physical input sensors before or after the first polished software demo.
-- Whether to package the host as a CLI service only or add a small desktop control UI.
+- Which persistent pet state fields should be present in the first long-term version.
+- Which input adapters should ship first beyond computer context.
+- Whether the host needs a desktop control UI or remains CLI/service-first.
+- Whether later graphics should stop at scene primitives and sprites or add a richer animation timeline.
