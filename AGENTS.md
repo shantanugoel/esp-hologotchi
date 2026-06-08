@@ -1,7 +1,5 @@
 # AGENTS.md
 
-Hologotchi is a tiny holographic AI pet for a desk: an ESP32-C3 drives a 128x128 RGB OLED viewed through a dichroic cube, while a local computer agent decides what the pet is feeling and doing. A small holographic creature lives beside the computer and reacts to what is happening on screen or in the background or what it hears (via the host program) etc.
-
 Repo split:
 
 - `device/`: ESP32-C3 Rust firmware.
@@ -26,8 +24,10 @@ Protocol direction:
 
 Host-agent direction:
 
-- Planned host stack is Python with Ollama as the default model runtime.
-- Default model target is `qwen3:1.7b`; `qwen3:4b` is a quality preset.
+- Planned host stack is Python with Ollama as the default control/runtime API.
+- Default model family is `qwen3.5`; use `qwen3.5:4b` as the default preset and `qwen3.5:2b` as the low-memory fallback.
+- Treat backend, model family, and preset as separate configuration knobs.
+- Prefer MLX-backed variants on macOS when they materially improve responsiveness or memory use on Apple Silicon.
 - Keep host modules separated by transport, model provider, event adapters, validation, and scheduling.
 - Computer-context reactions are in scope; full autonomous life-sim state is later.
 

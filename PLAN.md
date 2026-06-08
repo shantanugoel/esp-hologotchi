@@ -2,7 +2,7 @@
 
 ## Vision
 
-Hologotchi is a tiny holographic AI pet for a desk: an ESP32-C3 drives a 128x128 RGB OLED viewed through a dichroic cube, while a local computer agent decides what the pet is feeling and doing. A small holographic creature lives beside the computer and reacts to what is happening on screen or in the background or what it hears (via the host program) etc.
+Hologotchi is a tiny holographic AI pet for a desk: an ESP32-C3 drives a 128x128 RGB OLED viewed through a dichroic cube, while a local computer agent decides what the pet is feeling and doing. A small holographic creature lives beside the computer and reacts to what is happening on screen or in the background through the host program.
 
 The device should feel alive even when the host agent is disconnected, but the local computer is the brain. The ESP firmware is responsible for reliable display, animation, and protocol handling. The host agent is responsible for model calls, computer-context awareness, scheduling, and personality.
 
@@ -12,7 +12,7 @@ The device should feel alive even when the host agent is disconnected, but the l
 - Connect over USB serial first, with Wi-Fi treated as a later transport.
 - Run a local Python agent on Linux/NVIDIA or macOS Apple Silicon.
 - Use Ollama as the default model runner for cross-platform setup.
-- Default to a small fast model such as `qwen3:1.7b`; allow `qwen3:4b` as a quality preset.
+- Default to the `qwen3.5` family, with `qwen3.5:4b` as the main quality/default preset and `qwen3.5:2b` as the low-memory fallback.
 - React to computer context: active app/window, build/test results, music/state, notifications, and direct chat-style prompts where practical.
 - Include demo-mode reactions that are strong enough to film without relying on a model.
 
@@ -48,9 +48,11 @@ The existing `../esp-hologram` project is the reference for firmware shape: Rust
 The host should be provider-based:
 
 - Default provider: Ollama HTTP API.
-- Default model: `qwen3:1.7b`, optimized for low-latency always-on reactions.
-- Quality preset: `qwen3:4b`, for machines that can spare more memory and latency.
-- Later providers: llama.cpp server, LM Studio, MLX, or a remote API for comparison.
+- Default model family: `qwen3.5`.
+- Default model preset: `qwen3.5:4b`, optimized for a balance of latency and intelligence.
+- Low-memory fallback: `qwen3.5:2b`.
+- Provider/model abstraction: the host should treat backend, family, and preset as separate config choices so the same control logic can run against Ollama, llama.cpp, LM Studio, or MLX-backed runtimes.
+- macOS note: prefer MLX-backed variants when they materially improve memory use or responsiveness on Apple Silicon; keep the abstraction so Ollama remains the common path where that is simpler.
 
 ## Serial Protocol
 
@@ -133,6 +135,7 @@ The renderer should start simple: full-frame RGB565 framebuffer, integer-friendl
 4. Build the Python agent.
    - Serial transport with reconnects.
    - Ollama provider.
+   - Model-family/preset abstraction.
    - Strict JSON prompt and Pydantic validation.
    - Dry-run mode.
 
