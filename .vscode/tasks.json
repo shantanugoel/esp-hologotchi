@@ -1,0 +1,39 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "device: build",
+      "command": "cargo",
+      "args": ["build"],
+      "type": "shell",
+      "options": {
+        "cwd": "${workspaceFolder}/device"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "device: build release",
+      "command": "cargo",
+      "args": ["build", "--release"],
+      "type": "shell",
+      "options": {
+        "cwd": "${workspaceFolder}/device"
+      },
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "device: flash monitor",
+      "command": "cargo",
+      "args": ["run"],
+      "type": "shell",
+      "options": {
+        "cwd": "${workspaceFolder}/device"
+      },
+      "problemMatcher": ["$rustc"]
+    }
+  ]
+}

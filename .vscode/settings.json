@@ -1,0 +1,9 @@
+{
+  "rust-analyzer.linkedProjects": [
+    "device/Cargo.toml"
+  ],
+  "rust-analyzer.cargo.allTargets": false,
+  "rust-analyzer.cargo.target": "riscv32imc-unknown-none-elf",
+  "rust-analyzer.cargo.buildScripts.enable": true,
+  "rust-analyzer.check.command": "build",
+}

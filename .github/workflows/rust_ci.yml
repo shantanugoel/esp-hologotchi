@@ -4,9 +4,13 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "**/README.md"
+    paths:
+      - "device/**"
+      - ".github/workflows/rust_ci.yml"
   pull_request:
+    paths:
+      - "device/**"
+      - ".github/workflows/rust_ci.yml"
   workflow_dispatch:
 
 env:
@@ -37,5 +41,8 @@ jobs:
           components: rust-src, rustfmt, clippy
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: device -> target
       - name: Run command
+        working-directory: device
         run: cargo ${{ matrix.action.command }} ${{ matrix.action.args }}
