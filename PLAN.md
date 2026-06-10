@@ -187,10 +187,10 @@ The first useful animation set is enough:
 
 ## Roadmap
 
-1. **Lock the pet**
-   - Choose the shiba-like pet direction.
-   - Write a short personality prompt.
-   - Define the first 5 to 7 core behaviors.
+1. **Lock the pet** — done; see [PET.md](PET.md).
+   - Choose the shiba-like pet direction. → **Mochi**, a holographic shiba desk pet.
+   - Write a short personality prompt. → playful/meme-forward system prompt in PET.md.
+   - Define the first 5 to 7 core behaviors. → 7 locked: `idle`, `blink`, `look_around`, `happy`, `sleepy`, `worried`, `alert`.
 
 2. **Bring up the display**
    - SSD1351 init

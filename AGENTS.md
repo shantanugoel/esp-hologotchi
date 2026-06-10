@@ -14,6 +14,7 @@ Project-specific constraints:
 - Firmware should stay `no_std` friendly: fixed-size buffers, deterministic state machines, bounded parsing, and integer/fixed-point animation by default.
 - The pet should have local idle behavior so it still feels alive when the host is disconnected.
 - Optimize for fast-to-market: one pet, one transport, one control loop, a few inputs.
+- Do not overcomplicate, and do not over-architect things. Do not look for backward compatibility. Keep things simple.
 
 Transport direction:
 
