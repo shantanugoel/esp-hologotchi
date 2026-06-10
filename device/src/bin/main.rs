@@ -70,17 +70,15 @@ async fn main(spawner: Spawner) -> ! {
     let rst = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
 
     let mut display = Ssd1351::new(spi, dc, cs, rst);
-    match display.init(Orientation::CUBE) {
-        Ok(()) => {
-            info!("SSD1351 initialized");
-            spawner.spawn(render_task(display).unwrap());
-        }
-        Err(e) => warn!(
+    if let Err(e) = display.init(Orientation::CUBE) {
+        panic!(
             "SSD1351 init failed on SPI2 (CLK=GPIO4/MOSI=GPIO5/CS=GPIO6/DC=GPIO7/RST=GPIO10): \
              {:?}. Check wiring and power.",
             e
-        ),
+        );
     }
+    info!("SSD1351 initialized");
+    spawner.spawn(render_task(display).unwrap());
 
     info!("esp-hologotchi started");
     loop {

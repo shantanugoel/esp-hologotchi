@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "SSD1351 OLED",
+  "author": "esp-hologotchi",
+  "pins": [
+    "GND",
+    "VCC",
+    "SCK",
+    "MOSI",
+    "CS",
+    "DC",
+    "RST"
+  ],
+  "display": {
+    "width": 128,
+    "height": 128
+  }
+}

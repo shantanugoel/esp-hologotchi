@@ -10,6 +10,13 @@
             "attrs": {
                 "flashSize": "16"
             }
+        },
+        {
+            "type": "chip-ssd1351",
+            "id": "oled",
+            "top": 12,
+            "left": 281,
+            "attrs": {}
         }
     ],
     "connections": [
@@ -23,6 +30,48 @@
             "esp:RX",
             "$serialMonitor:TX",
             "",
+            []
+        ],
+        [
+            "oled:VCC",
+            "esp:3V3.1",
+            "red",
+            []
+        ],
+        [
+            "oled:GND",
+            "esp:GND.6",
+            "black",
+            []
+        ],
+        [
+            "oled:SCK",
+            "esp:4",
+            "gold",
+            []
+        ],
+        [
+            "oled:MOSI",
+            "esp:5",
+            "green",
+            []
+        ],
+        [
+            "oled:CS",
+            "esp:6",
+            "orange",
+            []
+        ],
+        [
+            "oled:DC",
+            "esp:7",
+            "blue",
+            []
+        ],
+        [
+            "oled:RST",
+            "esp:10",
+            "violet",
             []
         ]
     ],
