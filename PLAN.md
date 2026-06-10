@@ -192,10 +192,10 @@ The first useful animation set is enough:
    - Write a short personality prompt. → playful/meme-forward system prompt in PET.md.
    - Define the first 5 to 7 core behaviors. → 7 locked: `idle`, `blink`, `look_around`, `happy`, `sleepy`, `worried`, `alert`.
 
-2. **Bring up the display**
-   - SSD1351 init
-   - orientation and mirror correction
-   - one idle animation
+2. **Bring up the display** — firmware implemented in `device/`; pending on-hardware tuning.
+   - SSD1351 init → `device/src/display.rs` (deterministic init sequence, blocking SPI).
+   - orientation and mirror correction → single explicit `Orientation` re-map path; `Orientation::CUBE` for the dichroic cube (flags tunable at bring-up).
+   - one idle animation → `device/src/render.rs`: Mochi `idle` with integer breathing + occasional `blink`.
 
 3. **Bring up Wi-Fi**
    - join network

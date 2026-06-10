@@ -7,18 +7,31 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
+//! Phase 2 firmware entry point: bring up the SSD1351 OLED and run Mochi's local
+//! idle animation. Wi-Fi and the host brain come in later phases.
+
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Ticker, Timer};
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
+use esp_hal::gpio::{Level, Output, OutputConfig};
+use esp_hal::interrupt::software::SoftwareInterruptControl;
+use esp_hal::spi::Mode;
+use esp_hal::spi::master::{Config as SpiConfig, Spi};
+use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
-use log::info;
+use esp_hologotchi::display::{Orientation, Ssd1351};
+use esp_hologotchi::render::Scene;
+use log::{info, warn};
 
 extern crate alloc;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
-// For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
+
+/// Render tick. 20 fps is plenty for the calm idle loop and leaves the blocking
+/// SPI flush comfortable headroom within each frame.
+const FRAME_MS: u64 = 50;
 
 #[allow(
     clippy::large_stack_frames,
@@ -26,48 +39,71 @@ esp_bootloader_esp_idf::esp_app_desc!();
 )]
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
-    // generator version: 1.3.0
-    // generator parameters: --chip esp32c3 -o esp32c3-mini-1 -o unstable-hal -o alloc -o wifi -o embassy -o log -o esp-backtrace -o wokwi -o ci -o vscode -o stable-x86_64-unknown-linux-gnu
-
     esp_println::logger::init_logger_from_env();
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    // The following pins are used to bootstrap the chip. They are available
-    // for use, but check the datasheet of the module for more information on them.
-    // - GPIO2
-    // - GPIO8
-    // - GPIO9
-    // These GPIO pins are in use by some feature of the module and should not be used.
-    let _ = peripherals.GPIO11;
-    let _ = peripherals.GPIO12;
-    let _ = peripherals.GPIO13;
-    let _ = peripherals.GPIO14;
-    let _ = peripherals.GPIO15;
-    let _ = peripherals.GPIO16;
-    let _ = peripherals.GPIO17;
-
     esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 66320);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let sw_interrupt =
-        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+    let sw_interrupt = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
 
     info!("Embassy initialized!");
 
-    let (mut _wifi_controller, _interfaces) =
-        esp_radio::wifi::new(peripherals.WIFI, Default::default())
-            .expect("Failed to initialize Wi-Fi controller");
+    // --- SSD1351 OLED over blocking SPI ---
+    // Pin map (tunable at hardware bring-up): CLK=GPIO4, MOSI=GPIO5, CS=GPIO6,
+    // DC=GPIO7, RST=GPIO10.
+    let spi = Spi::new(
+        peripherals.SPI2,
+        SpiConfig::default()
+            .with_frequency(Rate::from_mhz(16))
+            .with_mode(Mode::_0),
+    )
+    .expect("Failed to initialize SPI")
+    .with_sck(peripherals.GPIO4)
+    .with_mosi(peripherals.GPIO5);
 
-    // TODO: Spawn some tasks
-    let _ = spawner;
+    let dc = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
+    let cs = Output::new(peripherals.GPIO6, Level::High, OutputConfig::default());
+    let rst = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
 
-    loop {
-        info!("Hello world!");
-        Timer::after(Duration::from_secs(1)).await;
+    let mut display = Ssd1351::new(spi, dc, cs, rst);
+    match display.init(Orientation::CUBE) {
+        Ok(()) => {
+            info!("SSD1351 initialized");
+            spawner.spawn(render_task(display).unwrap());
+        }
+        Err(e) => warn!(
+            "SSD1351 init failed on SPI2 (CLK=GPIO4/MOSI=GPIO5/CS=GPIO6/DC=GPIO7/RST=GPIO10): \
+             {:?}. Check wiring and power.",
+            e
+        ),
     }
 
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.1.0/examples
+    info!("esp-hologotchi started");
+    loop {
+        Timer::after(Duration::from_secs(3600)).await;
+    }
+}
+
+/// Fixed-rate idle render loop: advance the scene, draw it into the back buffer,
+/// then flush the whole frame to the panel.
+#[embassy_executor::task]
+#[allow(
+    clippy::large_stack_frames,
+    reason = "the styled embedded-graphics primitives briefly exceed the strict 1KB threshold"
+)]
+async fn render_task(mut display: Ssd1351) {
+    let mut scene = Scene::new();
+    let mut ticker = Ticker::every(Duration::from_millis(FRAME_MS));
+    loop {
+        scene.tick();
+        let _ = scene.draw(&mut display);
+        if let Err(e) = display.flush() {
+            warn!("display flush failed: {:?}", e);
+        }
+        ticker.next().await;
+    }
 }
