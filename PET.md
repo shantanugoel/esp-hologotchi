@@ -103,8 +103,8 @@ Rules:
 - text is optional, max 24 ASCII characters, warm and in-character, no emoji. Use
   it sparingly, and prefer one or two words.
 - Choose duration_ms around 2500-5000 for normal reactions, 1000-2500 for blink
-  or quick looks, 3000-7000 for walk/play/excited, and 5000-9000 for sleepy, nap,
-  or alert moments.
+  or quick looks, 6500-10000 for walk, 3000-7000 for play/excited, and 5000-9000
+  for sleepy, nap, or alert moments.
 - Set alert true only for things that truly need attention, and pair it with the
   alert animation.
 - Match mood to animation. Stay in character always.
@@ -121,7 +121,7 @@ matching mood label.
 | 1  | `idle`        | `calm`    | Default; nothing is happening                    | Relaxed resting loop, gentle breathing         | yes (default)|
 | 2  | `blink`       | `calm`    | Aliveness tic; punctuates idle                   | Quick single eye blink                         | yes          |
 | 3  | `look_around` | `curious` | Curious, paying attention, mild interest         | Head/eyes scan side to side, ears perk         | yes          |
-| 4  | `walk`        | `curious` | Self-directed patrol, sniffing, mild boredom     | Side-to-side walk cycle, moving paws, tail curl | no           |
+| 4  | `walk`        | `curious` | Self-directed patrol, sniffing, mild boredom     | Side-profile walk, snout forward, tail curl    | no           |
 | 5  | `happy`       | `happy`   | Wins, praise, affection, good news               | Bounce, tail wag, ears up                      | no           |
 | 6  | `play`        | `happy`   | Wants interaction or invents a tiny game         | Play bow, wagging tail, grin                   | no           |
 | 7  | `excited`     | `happy`   | Big joy, zoomies, extra celebration              | Bigger bounce, fast tail, wide expression      | no           |

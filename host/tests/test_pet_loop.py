@@ -98,6 +98,31 @@ class PetLoopTests(unittest.TestCase):
         self.assertIn("model unavailable: timed out", errors.getvalue())
         self.assertEqual(state.mood, "calm")
 
+    def test_loop_extends_short_walk_behavior(self) -> None:
+        def fake_generate(prompt: str, config: OllamaConfig) -> BehaviorCommand:
+            del prompt, config
+            return BehaviorCommand(
+                mood="curious",
+                animation="walk",
+                text=None,
+                alert=False,
+                duration_ms=3000,
+            )
+
+        output = io.StringIO()
+
+        run_pet_loop(
+            PetLoopConfig(max_cycles=1, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            output=output,
+        )
+
+        self.assertIn('"animation":"walk"', output.getvalue())
+        self.assertIn('"duration_ms":6500', output.getvalue())
+
     def test_loop_uses_queued_direct_message_before_next_idle_event(self) -> None:
         prompts: list[str] = []
 
@@ -209,3 +234,50 @@ class PetLoopTests(unittest.TestCase):
         self.assertIn("Important alert: calendar event starts now", prompts[1])
         self.assertIn('"input_id":"alert-1"', errors.getvalue())
         self.assertIn('"source":"important_alert"', errors.getvalue())
+
+    def test_important_alert_falls_back_to_alert_when_model_output_is_invalid(self) -> None:
+        calls = 0
+
+        def fake_generate(prompt: str, config: OllamaConfig) -> BehaviorCommand:
+            nonlocal calls
+            del prompt, config
+            calls += 1
+            if calls == 1:
+                return BehaviorCommand(
+                    mood="calm",
+                    animation="idle",
+                    text=None,
+                    alert=False,
+                    duration_ms=3000,
+                )
+            raise OllamaError(
+                "Ollama returned invalid behavior JSON: alert flag must match "
+                "the alert animation exactly"
+            )
+
+        inputs = HostInputQueue()
+        inputs.submit_important_alert("Mochi, gum gum")
+        output = io.StringIO()
+        errors = io.StringIO()
+
+        run_pet_loop(
+            PetLoopConfig(
+                interval_seconds=30.0,
+                max_cycles=2,
+                initial_event="quiet desk time",
+            ),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            input_queue=inputs,
+            log_events=True,
+            output=output,
+            error_output=errors,
+        )
+
+        payloads = output.getvalue()
+        self.assertIn('"animation":"alert"', payloads)
+        self.assertIn('"alert":true', payloads)
+        self.assertIn('"text":"look now"', payloads)
+        self.assertIn('"type":"loop_error"', errors.getvalue())

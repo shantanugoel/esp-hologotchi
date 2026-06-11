@@ -16,6 +16,7 @@ GenerateBehavior = Callable[[str, OllamaConfig], BehaviorCommand]
 SleepFn = Callable[[float], None]
 IDLE_CAPABLE_ANIMATIONS = frozenset({"idle", "blink", "look_around"})
 IDLE_LOOP_DURATION_MS = 3000
+WALK_MIN_DURATION_MS = 6500
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,7 @@ def run_pet_loop(
                     _log_loop_error(err, event, f"model unavailable: {exc}")
                 else:
                     print(f"model unavailable: {exc}", file=err, flush=True)
-                behavior = _fallback_behavior()
+                behavior = _fallback_behavior(event)
             behavior = _adapt_loop_behavior(behavior, loop_config)
 
             if client is not None:
@@ -110,7 +111,16 @@ def _require_endpoint(endpoint: DeviceEndpoint | None) -> DeviceEndpoint:
     return endpoint
 
 
-def _fallback_behavior() -> BehaviorCommand:
+def _fallback_behavior(event: _LoopEvent) -> BehaviorCommand:
+    if event.source == "important_alert":
+        return BehaviorCommand(
+            mood="alert",
+            animation="alert",
+            text="look now",
+            alert=True,
+            duration_ms=6500,
+        )
+
     return BehaviorCommand(
         mood="calm",
         animation="idle",
@@ -184,6 +194,15 @@ def _log_json(output: TextIO, payload: dict[str, object]) -> None:
 def _adapt_loop_behavior(
     behavior: BehaviorCommand, loop_config: PetLoopConfig
 ) -> BehaviorCommand:
+    if behavior.animation == "walk" and behavior.duration_ms < WALK_MIN_DURATION_MS:
+        return BehaviorCommand(
+            mood=behavior.mood,
+            animation=behavior.animation,
+            text=behavior.text,
+            alert=behavior.alert,
+            duration_ms=WALK_MIN_DURATION_MS,
+        )
+
     if behavior.animation not in IDLE_CAPABLE_ANIMATIONS:
         return behavior
 

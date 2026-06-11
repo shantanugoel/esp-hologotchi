@@ -118,10 +118,12 @@ def build_stateful_prompt(state: PetState, event: str) -> str:
         "passed build/test results, or spontaneous joyful energy. "
         "Use worried for failed build/test results and confusing trouble. "
         "Use alert only for important alerts that need the human to look now. "
+        "If the current moment starts with Important alert:, animation must be "
+        "alert and alert must be true. "
         "Keep text to one or two short ASCII words, and prefer no text for "
         "idle-capable animations. Prefer duration_ms 2500-5000 for normal "
-        "reactions, 1000-2500 for blink/look_around, 3000-7000 for walk/play/"
-        "excited, and 5000-9000 for sleepy, nap, or alert."
+        "reactions, 1000-2500 for blink/look_around, 6500-10000 for walk, "
+        "3000-7000 for play/excited, and 5000-9000 for sleepy, nap, or alert."
     )
 
 

@@ -32,6 +32,8 @@ const BLINK_LEN: u32 = 3;
 const LOOK_PERIOD: u32 = 280;
 const LOOK_START: u32 = 150;
 const LOOK_LEN: u32 = 42;
+/// Half of a side-profile pacing loop (~5.5 s at 20 fps).
+const WALK_HALF_PERIOD: u32 = 110;
 
 // Mochi's palette keeps enough contrast to read through the cube while preserving
 // the natural Shiba look locked in `PET.md`.
@@ -75,6 +77,7 @@ struct Pose {
     eye_style: EyeStyle,
     mouth: MouthStyle,
     alert_border: bool,
+    face_left: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -210,6 +213,7 @@ fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_aler
         eye_style: EyeStyle::Open,
         mouth: MouthStyle::Smile,
         alert_border: false,
+        face_left: false,
     };
 
     match animation {
@@ -230,7 +234,15 @@ fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_aler
         }
         Animation::Walk => {
             pose.body_pose = BodyPose::Walk;
-            pose.ox = wave(anim_frame, 2, 0, 10);
+            let walk_phase = anim_frame % (WALK_HALF_PERIOD * 2);
+            let walk_step = walk_phase % WALK_HALF_PERIOD;
+            if walk_phase < WALK_HALF_PERIOD {
+                pose.ox = -26 + (walk_step as i32 * 29) / (WALK_HALF_PERIOD as i32 - 1);
+                pose.face_left = false;
+            } else {
+                pose.ox = 27 - (walk_step as i32 * 27) / (WALK_HALF_PERIOD as i32 - 1);
+                pose.face_left = true;
+            }
             pose.oy += wave_abs(anim_frame, 4, 0, 2);
             pose.hx = wave(anim_frame, 2, 8, 3);
             pose.hy -= 2;
@@ -348,8 +360,10 @@ where
     let tail_oy = pose.oy + pose.tail_y;
 
     // --- Body ---
-    if matches!(pose.body_pose, BodyPose::LieDown) {
-        return draw_lying_mochi(target, pose);
+    match pose.body_pose {
+        BodyPose::Walk => return draw_walking_mochi(target, pose),
+        BodyPose::LieDown => return draw_lying_mochi(target, pose),
+        BodyPose::Sit | BodyPose::PlayBow | BodyPose::AlertStance => {}
     }
     draw_body(target, pose, body_ox, body_oy, tail_ox, tail_oy)?;
 
@@ -443,19 +457,7 @@ where
             fill_round_rect(target, 66 + body_ox, 96 + body_oy, 17, 34, 8, CREAM)?;
             draw_toe_lines(target, body_ox, body_oy)?;
         }
-        BodyPose::Walk => {
-            fill_circle(target, 101 + tail_ox, 82 + tail_oy, 28, ORANGE)?;
-            stroke_circle(target, 103 + tail_ox, 84 + tail_oy, 13, ORANGE_DK, 3)?;
-            fill_circle(target, 103 + tail_ox, 84 + tail_oy, 5, CREAM)?;
-
-            fill_ellipse(target, 63 + body_ox, 100 + body_oy, 62, 40, ORANGE)?;
-            fill_ellipse(target, 63 + body_ox, 104 + body_oy, 42, 24, CREAM)?;
-            let step = pose.leg_lift;
-            fill_round_rect(target, 41 + body_ox, 106 + body_oy + step, 12, 23, 6, CREAM)?;
-            fill_round_rect(target, 55 + body_ox, 108 + body_oy - step, 12, 21, 6, CREAM)?;
-            fill_round_rect(target, 73 + body_ox, 107 + body_oy - step, 12, 22, 6, CREAM)?;
-            fill_round_rect(target, 87 + body_ox, 106 + body_oy + step, 12, 23, 6, CREAM)?;
-        }
+        BodyPose::Walk => {}
         BodyPose::PlayBow => {
             fill_circle(target, 101 + tail_ox, 76 + tail_oy, 30, ORANGE)?;
             stroke_circle(target, 103 + tail_ox, 78 + tail_oy, 14, ORANGE_DK, 3)?;
@@ -543,6 +545,182 @@ where
         pt(79, 128, ox, oy),
         2,
         ORANGE_DK,
+    )
+}
+
+fn draw_walking_mochi<D>(target: &mut D, pose: Pose) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb565>,
+{
+    let ox = pose.ox;
+    let oy = pose.oy + 1;
+    let face_left = pose.face_left;
+    let step = pose.leg_lift;
+    let front_lift = if step < 0 { step } else { 0 };
+    let back_lift = if step > 0 { -step } else { 0 };
+
+    // Rear curl tail, body, and two visible walking legs in side profile.
+    fill_circle(
+        target,
+        side_x(31, ox + pose.tail_x / 2, face_left),
+        78 + oy + pose.tail_y,
+        30,
+        ORANGE,
+    )?;
+    stroke_circle(
+        target,
+        side_x(33, ox + pose.tail_x / 2, face_left),
+        80 + oy + pose.tail_y,
+        15,
+        ORANGE_DK,
+        3,
+    )?;
+    fill_circle(
+        target,
+        side_x(33, ox + pose.tail_x / 2, face_left),
+        80 + oy + pose.tail_y,
+        6,
+        CREAM,
+    )?;
+
+    fill_ellipse(target, side_x(62, ox, face_left), 94 + oy, 72, 41, ORANGE)?;
+    fill_ellipse(target, side_x(64, ox, face_left), 101 + oy, 48, 22, CREAM)?;
+    fill_round_rect(
+        target,
+        side_rect_x(48 - step / 3, 14, ox, face_left),
+        102 + oy + back_lift,
+        14,
+        25,
+        7,
+        CREAM,
+    )?;
+    fill_round_rect(
+        target,
+        side_rect_x(81 + step / 3, 14, ox, face_left),
+        101 + oy + front_lift,
+        14,
+        26,
+        7,
+        CREAM,
+    )?;
+    fill_ellipse(
+        target,
+        side_x(51, ox - step / 2, face_left),
+        125 + oy + back_lift / 2,
+        20,
+        7,
+        CREAM,
+    )?;
+    fill_ellipse(
+        target,
+        side_x(85, ox + step / 2, face_left),
+        125 + oy + front_lift / 2,
+        20,
+        7,
+        CREAM,
+    )?;
+
+    // Side-facing head with a real snout, one eye, and rounded ears.
+    fill_circle(
+        target,
+        side_x(91, ox + pose.hx, face_left),
+        63 + oy + pose.hy,
+        43,
+        ORANGE,
+    )?;
+    fill_triangle(
+        target,
+        side_pt(82, 50, ox + pose.hx, oy + pose.hy, face_left),
+        side_pt(78, 27, ox + pose.hx, oy + pose.hy, face_left),
+        side_pt(96, 43, ox + pose.hx, oy + pose.hy, face_left),
+        ORANGE,
+    )?;
+    fill_triangle(
+        target,
+        side_pt(99, 48, ox + pose.hx, oy + pose.hy, face_left),
+        side_pt(105, 29, ox + pose.hx, oy + pose.hy, face_left),
+        side_pt(111, 52, ox + pose.hx, oy + pose.hy, face_left),
+        ORANGE,
+    )?;
+    fill_circle(
+        target,
+        side_x(78, ox + pose.hx, face_left),
+        28 + oy + pose.hy,
+        9,
+        ORANGE,
+    )?;
+    fill_circle(
+        target,
+        side_x(105, ox + pose.hx, face_left),
+        30 + oy + pose.hy,
+        9,
+        ORANGE,
+    )?;
+    fill_triangle(
+        target,
+        side_pt(84, 45, ox + pose.hx, oy + pose.hy, face_left),
+        side_pt(81, 32, ox + pose.hx, oy + pose.hy, face_left),
+        side_pt(93, 43, ox + pose.hx, oy + pose.hy, face_left),
+        PINK,
+    )?;
+    fill_triangle(
+        target,
+        side_pt(101, 44, ox + pose.hx, oy + pose.hy, face_left),
+        side_pt(104, 34, ox + pose.hx, oy + pose.hy, face_left),
+        side_pt(108, 48, ox + pose.hx, oy + pose.hy, face_left),
+        PINK,
+    )?;
+    fill_ellipse(
+        target,
+        side_x(106, ox + pose.hx, face_left),
+        73 + oy + pose.hy,
+        31,
+        20,
+        CREAM,
+    )?;
+    fill_ellipse(
+        target,
+        side_x(85, ox + pose.hx, face_left),
+        76 + oy + pose.hy,
+        26,
+        20,
+        CREAM,
+    )?;
+    fill_circle(
+        target,
+        side_x(98, ox + pose.hx, face_left),
+        60 + oy + pose.hy,
+        11,
+        NAVY,
+    )?;
+    fill_circle(
+        target,
+        side_x(95, ox + pose.hx, face_left),
+        56 + oy + pose.hy,
+        4,
+        SHINE,
+    )?;
+    fill_triangle(
+        target,
+        side_pt(117, 71, ox + pose.hx, oy + pose.hy, face_left),
+        side_pt(124, 75, ox + pose.hx, oy + pose.hy, face_left),
+        side_pt(117, 79, ox + pose.hx, oy + pose.hy, face_left),
+        NAVY,
+    )?;
+    stroke_line(
+        target,
+        side_pt(112, 82, ox + pose.hx, oy + pose.hy, face_left),
+        side_pt(105, 86, ox + pose.hx, oy + pose.hy, face_left),
+        2,
+        NAVY,
+    )?;
+    fill_ellipse(
+        target,
+        side_x(91, ox + pose.hx, face_left),
+        82 + oy + pose.hy,
+        10,
+        6,
+        BLUSH,
     )
 }
 
@@ -867,6 +1045,21 @@ fn wave_abs(frame: u32, speed: u32, phase: usize, amplitude: i32) -> i32 {
 #[inline]
 fn pt(x: i32, y: i32, ox: i32, oy: i32) -> Point {
     Point::new(x + ox, y + oy)
+}
+
+#[inline]
+fn side_x(x: i32, ox: i32, face_left: bool) -> i32 {
+    if face_left { 128 - x + ox } else { x + ox }
+}
+
+#[inline]
+fn side_rect_x(x: i32, w: i32, ox: i32, face_left: bool) -> i32 {
+    if face_left { 128 - x - w + ox } else { x + ox }
+}
+
+#[inline]
+fn side_pt(x: i32, y: i32, ox: i32, oy: i32, face_left: bool) -> Point {
+    Point::new(side_x(x, ox, face_left), y + oy)
 }
 
 fn fill_circle<D>(target: &mut D, cx: i32, cy: i32, dia: i32, color: Rgb565) -> Result<(), D::Error>
