@@ -7,6 +7,7 @@ from .protocol import BehaviorCommand
 MIN_STAT = 0
 MAX_STAT = 100
 EVENT_MAX_LEN = 80
+RECENT_PHRASE_LIMIT = 5
 
 
 @dataclass
@@ -19,6 +20,7 @@ class PetState:
     sleepiness: int = 25
     quiet_cycles: int = 0
     last_event: str = "host loop started"
+    recent_phrases: tuple[str, ...] = ()
 
     def prompt_context(self) -> str:
         return (
@@ -30,12 +32,15 @@ class PetState:
             f"- playfulness: {self.playfulness}/100\n"
             f"- sleepiness: {self.sleepiness}/100\n"
             f"- quiet_cycles: {self.quiet_cycles}\n"
+            f"- recent_phrases: {_format_recent_phrases(self.recent_phrases)}\n"
             f"- last_event: {self.last_event}"
         )
 
     def observe(self, behavior: BehaviorCommand, event: str) -> None:
         self.mood = behavior.mood
         self.last_event = _short_event(event)
+        if behavior.text:
+            self.recent_phrases = (*self.recent_phrases, behavior.text)[-RECENT_PHRASE_LIMIT:]
         is_quiet = event.lower().startswith("quiet desk time")
         self.quiet_cycles = self.quiet_cycles + 1 if is_quiet else 0
 
@@ -120,7 +125,10 @@ def build_stateful_prompt(state: PetState, event: str) -> str:
         "Use alert only for important alerts that need the human to look now. "
         "If the current moment starts with Important alert:, animation must be "
         "alert and alert must be true. "
-        "Keep text to one or two short ASCII words, and prefer no text for "
+        "When you include text, make it varied, dog-like, and one to three "
+        "short ASCII words. Avoid repeating any recent_phrases exactly; invent "
+        "fresh tiny phrases with sniffs, wags, borks, paws, patrols, flops, "
+        "boops, naps, or zoomies when they fit. Prefer no text for "
         "idle-capable animations. Prefer duration_ms 2500-5000 for normal "
         "reactions, 1000-2500 for blink/look_around, 6500-10000 for walk, "
         "3000-7000 for play/excited, and 5000-9000 for sleepy, nap, or alert."
@@ -134,3 +142,7 @@ def _clamp_stat(value: int) -> int:
 def _short_event(event: str) -> str:
     cleaned = " ".join(event.split())
     return cleaned[:EVENT_MAX_LEN] if cleaned else "quiet desk time"
+
+
+def _format_recent_phrases(phrases: tuple[str, ...]) -> str:
+    return ", ".join(phrases) if phrases else "none"

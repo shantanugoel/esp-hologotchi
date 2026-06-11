@@ -17,11 +17,13 @@ class PetStateTests(unittest.TestCase):
         self.assertIn("last_event: build passed", prompt)
         self.assertIn("user is reading logs", prompt)
         self.assertIn("playfulness: 55/100", prompt)
+        self.assertIn("recent_phrases: none", prompt)
         self.assertIn("choose self-directed actions sometimes", prompt)
         self.assertIn("including walk, play, excited, or nap", prompt)
         self.assertIn("Use happy/excited/play for direct affection", prompt)
         self.assertIn("Use worried for failed build/test results", prompt)
         self.assertIn("Use alert only for important alerts", prompt)
+        self.assertIn("Avoid repeating any recent_phrases exactly", prompt)
         self.assertIn("Prefer duration_ms 2500-5000", prompt)
 
     def test_observe_updates_and_clamps_state(self) -> None:
@@ -43,6 +45,31 @@ class PetStateTests(unittest.TestCase):
         self.assertEqual(state.attention, 100)
         self.assertEqual(state.sleepiness, 0)
         self.assertEqual(state.last_event, "important alert arrived")
+        self.assertEqual(state.recent_phrases, ("look now",))
+
+    def test_recent_phrases_keep_last_five_text_outputs(self) -> None:
+        state = PetState()
+
+        for index in range(6):
+            state.observe(
+                BehaviorCommand(
+                    mood="happy",
+                    animation="happy",
+                    text=f"phrase {index}",
+                    alert=False,
+                    duration_ms=2000,
+                ),
+                "quiet desk time",
+            )
+
+        self.assertEqual(
+            state.recent_phrases,
+            ("phrase 1", "phrase 2", "phrase 3", "phrase 4", "phrase 5"),
+        )
+        self.assertIn(
+            "recent_phrases: phrase 1, phrase 2, phrase 3, phrase 4, phrase 5",
+            state.prompt_context(),
+        )
 
     def test_idle_event_reflects_current_state(self) -> None:
         sleepy = PetState(sleepiness=80)
