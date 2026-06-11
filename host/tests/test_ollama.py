@@ -50,6 +50,7 @@ class OllamaTests(unittest.TestCase):
             model_preset="qwen3.5:4b",
             timeout_seconds=2.0,
             keep_alive="45m",
+            num_predict=80,
         )
 
         behavior = generate_behavior("the build just passed", config)
@@ -62,6 +63,8 @@ class OllamaTests(unittest.TestCase):
         self.assertEqual(request_body["model"], "qwen3.5:4b")
         self.assertEqual(request_body["format"], "json")
         self.assertEqual(request_body["keep_alive"], "45m")
+        self.assertFalse(request_body["think"])
+        self.assertEqual(request_body["options"], {"num_predict": 80})
         self.assertFalse(request_body["stream"])
         self.assertIn("Mochi", request_body["system"])
         self.assertIn("the build just passed", request_body["prompt"])

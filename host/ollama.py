@@ -19,6 +19,8 @@ class OllamaConfig:
     model_preset: str = "qwen3.5:4b"
     timeout_seconds: float = 30.0
     keep_alive: str = "30m"
+    think: bool = False
+    num_predict: int = 96
 
 
 def build_generate_request(user_prompt: str, config: OllamaConfig) -> dict[str, object]:
@@ -28,6 +30,8 @@ def build_generate_request(user_prompt: str, config: OllamaConfig) -> dict[str, 
         "prompt": build_situation_prompt(user_prompt),
         "stream": False,
         "format": "json",
+        "think": config.think,
+        "options": {"num_predict": config.num_predict},
     }
     if config.keep_alive:
         payload["keep_alive"] = config.keep_alive

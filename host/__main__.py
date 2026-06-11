@@ -66,6 +66,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--ollama-think",
+        action="store_true",
+        help="Allow thinking output for models that support it. Disabled by default.",
+    )
+    parser.add_argument(
+        "--ollama-num-predict",
+        type=int,
+        default=96,
+        help="Maximum output tokens for one behavior JSON response.",
+    )
+    parser.add_argument(
         "--connect-retries",
         type=int,
         default=5,
@@ -112,6 +123,8 @@ def main(argv: list[str] | None = None) -> int:
         model_preset=args.model_preset,
         timeout_seconds=args.timeout_seconds,
         keep_alive=args.ollama_keep_alive,
+        think=args.ollama_think,
+        num_predict=args.ollama_num_predict,
     )
     if not args.dry_run and not args.device_host:
         parser.error("--device-host is required unless --dry-run is set")
