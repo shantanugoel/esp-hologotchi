@@ -171,3 +171,41 @@ class PetLoopTests(unittest.TestCase):
         self.assertIn('"input_id":"initial"', logs)
         self.assertIn('"input_id":"direct-1"', logs)
         self.assertIn('"source":"direct_message"', logs)
+
+    def test_loop_uses_queued_important_alert(self) -> None:
+        prompts: list[str] = []
+
+        def fake_generate(prompt: str, config: OllamaConfig) -> BehaviorCommand:
+            del config
+            prompts.append(prompt)
+            return BehaviorCommand(
+                mood="alert",
+                animation="alert",
+                text="look now",
+                alert=True,
+                duration_ms=3000,
+            )
+
+        inputs = HostInputQueue()
+        inputs.submit_important_alert("calendar event starts now")
+        errors = io.StringIO()
+
+        run_pet_loop(
+            PetLoopConfig(
+                interval_seconds=30.0,
+                max_cycles=2,
+                initial_event="quiet desk time",
+            ),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            input_queue=inputs,
+            log_events=True,
+            output=io.StringIO(),
+            error_output=errors,
+        )
+
+        self.assertIn("Important alert: calendar event starts now", prompts[1])
+        self.assertIn('"input_id":"alert-1"', errors.getvalue())
+        self.assertIn('"source":"important_alert"', errors.getvalue())

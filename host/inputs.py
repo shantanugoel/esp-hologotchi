@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from itertools import count
 
 DIRECT_MESSAGE_MAX_LEN = 500
+INDIRECT_DETAIL_MAX_LEN = 240
+ALERT_TEXT_MAX_LEN = 240
+BUILD_TEST_KINDS = frozenset({"build", "test"})
 
 
 class InputError(ValueError):
@@ -33,6 +36,46 @@ class HostInputQueue:
         self._queue.put(item)
         return item
 
+    def submit_build_test_result(
+        self, kind: str, ok: bool, detail: str | None = None
+    ) -> HostInput:
+        clean_kind = _clean_build_test_kind(kind)
+        if not isinstance(ok, bool):
+            raise InputError("ok must be a boolean")
+
+        clean_detail = _clean_optional_text(
+            detail,
+            field="text",
+            max_len=INDIRECT_DETAIL_MAX_LEN,
+        )
+        status = "passed" if ok else "failed"
+        label = clean_kind.capitalize()
+        event = f"{label} {status}."
+        if clean_detail is not None:
+            event = f"{event} {clean_detail}"
+
+        item = HostInput(
+            id=f"{clean_kind}-{next(self._ids)}",
+            source=f"{clean_kind}_result",
+            event=event,
+        )
+        self._queue.put(item)
+        return item
+
+    def submit_important_alert(self, text: str) -> HostInput:
+        message = _clean_required_text(
+            text,
+            field="text",
+            max_len=ALERT_TEXT_MAX_LEN,
+        )
+        item = HostInput(
+            id=f"alert-{next(self._ids)}",
+            source="important_alert",
+            event=f"Important alert: {message}",
+        )
+        self._queue.put(item)
+        return item
+
     def get_nowait(self) -> HostInput | None:
         try:
             return self._queue.get_nowait()
@@ -47,15 +90,37 @@ class HostInputQueue:
 
 
 def _clean_direct_message(text: str) -> str:
+    return _clean_required_text(
+        text,
+        field="text",
+        max_len=DIRECT_MESSAGE_MAX_LEN,
+    )
+
+
+def _clean_build_test_kind(kind: str) -> str:
+    if not isinstance(kind, str):
+        raise InputError("kind must be a string")
+    cleaned = kind.strip().lower()
+    if cleaned not in BUILD_TEST_KINDS:
+        allowed = ", ".join(sorted(BUILD_TEST_KINDS))
+        raise InputError(f"kind must be one of: {allowed}")
+    return cleaned
+
+
+def _clean_required_text(text: str, *, field: str, max_len: int) -> str:
     if not isinstance(text, str):
-        raise InputError("text must be a string")
+        raise InputError(f"{field} must be a string")
 
     cleaned = " ".join(text.split())
     if not cleaned:
-        raise InputError("text must not be empty")
-    if len(cleaned) > DIRECT_MESSAGE_MAX_LEN:
-        raise InputError(
-            f"text must be at most {DIRECT_MESSAGE_MAX_LEN} characters after trimming"
-        )
+        raise InputError(f"{field} must not be empty")
+    if len(cleaned) > max_len:
+        raise InputError(f"{field} must be at most {max_len} characters after trimming")
 
     return cleaned
+
+
+def _clean_optional_text(text: str | None, *, field: str, max_len: int) -> str | None:
+    if text is None:
+        return None
+    return _clean_required_text(text, field=field, max_len=max_len)

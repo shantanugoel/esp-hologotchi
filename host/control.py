@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import TracebackType
 from typing import TextIO
 
-from .inputs import HostInputQueue, InputError
+from .inputs import HostInput, HostInputQueue, InputError
 
 MAX_REQUEST_BYTES = 4096
 
@@ -98,16 +98,13 @@ class _ControlHandler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.OK, {"ok": True})
 
     def do_POST(self) -> None:
-        if self.path != "/message":
+        if self.path not in {"/message", "/build", "/test", "/alert"}:
             self._send_error(HTTPStatus.NOT_FOUND, "not found")
             return
 
         try:
             payload = self._read_json_body()
-            text = payload.get("text")
-            if not isinstance(text, str):
-                raise InputError("text must be a string")
-            item = self.input_queue.submit_direct_message(text)
+            item = self._submit_input(self.path, payload)
         except InputError as exc:
             self._log(
                 {
@@ -145,6 +142,34 @@ class _ControlHandler(BaseHTTPRequestHandler):
             }
         )
         self._send_json(HTTPStatus.ACCEPTED, {"ok": True, "id": item.id})
+
+    def _submit_input(self, path: str, payload: dict[str, object]) -> HostInput:
+        if path == "/message":
+            text = payload.get("text")
+            if not isinstance(text, str):
+                raise InputError("text must be a string")
+            return self.input_queue.submit_direct_message(text)
+
+        if path in {"/build", "/test"}:
+            ok = payload.get("ok")
+            if not isinstance(ok, bool):
+                raise InputError("ok must be a boolean")
+            text = payload.get("text")
+            if text is not None and not isinstance(text, str):
+                raise InputError("text must be a string")
+            return self.input_queue.submit_build_test_result(
+                path.removeprefix("/"),
+                ok,
+                text,
+            )
+
+        if path == "/alert":
+            text = payload.get("text")
+            if not isinstance(text, str):
+                raise InputError("text must be a string")
+            return self.input_queue.submit_important_alert(text)
+
+        raise ValueError("unsupported input path")
 
     def log_message(self, format: str, *args: object) -> None:
         del format, args

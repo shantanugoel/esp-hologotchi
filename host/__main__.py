@@ -116,13 +116,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--serve",
         action="store_true",
-        help="Expose a small HTTP input endpoint while --loop is running.",
+        help="Expose small HTTP input endpoints while --loop is running.",
     )
     parser.add_argument(
         "--message-bind-host",
         default="127.0.0.1",
         help=(
-            "Host/IP for the HTTP message endpoint. Defaults to localhost; "
+            "Host/IP for the HTTP input endpoints. Defaults to localhost; "
             "use 0.0.0.0 to accept LAN clients."
         ),
     )
@@ -130,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--message-port",
         type=int,
         default=8787,
-        help="Port for the HTTP message endpoint.",
+        help="Port for the HTTP input endpoints.",
     )
     return parser
 
@@ -182,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
             if control_server is not None:
                 bind_host, bind_port = control_server.address
                 print(
-                    f"message endpoint listening on http://{bind_host}:{bind_port}",
+                    f"input endpoints listening on http://{bind_host}:{bind_port}",
                     file=sys.stderr,
                     flush=True,
                 )

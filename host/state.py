@@ -86,7 +86,9 @@ def build_stateful_prompt(state: PetState, event: str) -> str:
         "Quiet desk time should still feel alive: vary between idle, blink, "
         "and look_around instead of choosing idle every cycle. Use sleepy only "
         "when Mochi is drowsy, and reserve happy, worried, and alert for clear "
-        "events."
+        "events. Treat passed build/test results as small wins, failed "
+        "build/test results as worried moments, and important alerts as alert "
+        "moments."
     )
 
 

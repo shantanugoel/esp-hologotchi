@@ -17,7 +17,8 @@ The repository currently includes:
 - Wi-Fi bring-up and reconnect handling on the ESP32-C3
 - a TCP control socket on the device for behavior updates
 - a Python host CLI that can either send one behavior, run a small stateful pet loop,
-  or accept direct messages through a local HTTP endpoint
+  or accept direct messages, build/test results, and one important alert path
+  through a local HTTP endpoint
 
 See:
 
@@ -152,6 +153,26 @@ curl -X POST http://127.0.0.1:8787/message \
   -d '{"text":"Mochi, I finally fixed the bug"}'
 ```
 
+Report a build or test result:
+
+```bash
+curl -X POST http://127.0.0.1:8787/build \
+  -H 'Content-Type: application/json' \
+  -d '{"ok":true,"text":"cargo build completed"}'
+
+curl -X POST http://127.0.0.1:8787/test \
+  -H 'Content-Type: application/json' \
+  -d '{"ok":false,"text":"host tests failed"}'
+```
+
+Send the one V1 important alert path:
+
+```bash
+curl -X POST http://127.0.0.1:8787/alert \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"calendar event starts now"}'
+```
+
 The HTTP response includes the queued input ID:
 
 ```json
@@ -166,7 +187,10 @@ so direct messages are distinguishable from regular idle loop updates:
 {"type":"behavior_result","input_id":"direct-1","source":"direct_message","animation":"happy","mood":"happy","text":"tail wag","alert":false,"duration_ms":3000}
 ```
 
-The message endpoint binds to localhost by default. To accept messages from other
+Build and test result IDs use `build-*` and `test-*`; important alerts use
+`alert-*`.
+
+The input endpoint binds to localhost by default. To accept inputs from other
 machines on the local network, bind it explicitly:
 
 ```bash
@@ -186,7 +210,7 @@ Useful flags:
 - `--loop` — keep in-memory pet state and send repeated behavior updates
 - `--interval-seconds 6` — control the loop cadence
 - `--max-cycles 10` — run a bounded loop for demos or tests
-- `--serve` — expose `POST /message` while the pet loop is running
+- `--serve` — expose `POST /message`, `/build`, `/test`, and `/alert` while the pet loop is running
 - `--message-bind-host 127.0.0.1` — bind host for the message endpoint; use `0.0.0.0` for LAN clients
 - `--message-port 8787` — bind port for the message endpoint
 

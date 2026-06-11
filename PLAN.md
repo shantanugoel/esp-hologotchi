@@ -216,9 +216,9 @@ The first useful animation set is enough:
    - send the pet a message → `POST /message` on the host HTTP endpoint
    - get an in-character response and behavior → pet loop consumes the message as the next stateful event
 
-7. **Add limited indirect inputs**
-   - build/test result
-   - one important alert path
+7. **Add limited indirect inputs** — done; host HTTP endpoint accepts build/test results and one important alert path.
+   - build/test result → `POST /build` and `POST /test` while the host loop is served
+   - one important alert path → `POST /alert` while the host loop is served
 
 8. **Polish**
    - tune prompt/personality
