@@ -16,7 +16,8 @@ The repository currently includes:
 - device firmware that boots into a local idle animation with no host attached
 - Wi-Fi bring-up and reconnect handling on the ESP32-C3
 - a TCP control socket on the device for behavior updates
-- a Python host CLI that can either send one behavior or run a small stateful pet loop
+- a Python host CLI that can either send one behavior, run a small stateful pet loop,
+  or accept direct messages through a local HTTP endpoint
 
 See:
 
@@ -137,6 +138,44 @@ Run the Phase 5 pet loop:
 uv run hologotchi-host --device-host 192.168.1.50 --loop
 ```
 
+Run the pet loop with the Phase 6 direct-message endpoint:
+
+```bash
+uv run hologotchi-host --device-host 192.168.1.50 --loop --serve
+```
+
+Send Mochi a direct message:
+
+```bash
+curl -X POST http://127.0.0.1:8787/message \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Mochi, I finally fixed the bug"}'
+```
+
+The HTTP response includes the queued input ID:
+
+```json
+{"ok":true,"id":"direct-1"}
+```
+
+When `--serve` is enabled, the host logs input and model-result records to stderr
+so direct messages are distinguishable from regular idle loop updates:
+
+```json
+{"type":"input","status":"accepted","id":"direct-1","source":"direct_message","transport":"http","remote":"127.0.0.1","event":"Direct user message: Mochi, I finally fixed the bug"}
+{"type":"behavior_result","input_id":"direct-1","source":"direct_message","animation":"happy","mood":"happy","text":"tail wag","alert":false,"duration_ms":3000}
+```
+
+The message endpoint binds to localhost by default. To accept messages from other
+machines on the local network, bind it explicitly:
+
+```bash
+uv run hologotchi-host --device-host 192.168.1.50 --loop --serve --message-bind-host 0.0.0.0
+```
+
+LAN clients should post to the host machine's actual IP address, for example
+`http://192.168.1.20:8787/message`.
+
 Useful flags:
 
 - `--device-port 4242` — override the TCP port if you changed it on the device
@@ -147,6 +186,9 @@ Useful flags:
 - `--loop` — keep in-memory pet state and send repeated behavior updates
 - `--interval-seconds 6` — control the loop cadence
 - `--max-cycles 10` — run a bounded loop for demos or tests
+- `--serve` — expose `POST /message` while the pet loop is running
+- `--message-bind-host 127.0.0.1` — bind host for the message endpoint; use `0.0.0.0` for LAN clients
+- `--message-port 8787` — bind port for the message endpoint
 
 ## Verification
 

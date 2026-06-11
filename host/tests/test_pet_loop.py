@@ -4,6 +4,7 @@ import io
 import unittest
 
 from host.ollama import OllamaConfig, OllamaError
+from host.inputs import HostInputQueue
 from host.pet_loop import PetLoopConfig, run_pet_loop
 from host.protocol import BehaviorCommand
 
@@ -96,3 +97,77 @@ class PetLoopTests(unittest.TestCase):
         self.assertIn('"animation":"idle"', output.getvalue())
         self.assertIn("model unavailable: timed out", errors.getvalue())
         self.assertEqual(state.mood, "calm")
+
+    def test_loop_uses_queued_direct_message_before_next_idle_event(self) -> None:
+        prompts: list[str] = []
+
+        def fake_generate(prompt: str, config: OllamaConfig) -> BehaviorCommand:
+            del config
+            prompts.append(prompt)
+            return BehaviorCommand(
+                mood="happy",
+                animation="happy",
+                text="tail wag",
+                alert=False,
+                duration_ms=3000,
+            )
+
+        sleeps: list[float] = []
+        inputs = HostInputQueue()
+        inputs.submit_direct_message("Mochi, I fixed it")
+
+        run_pet_loop(
+            PetLoopConfig(
+                interval_seconds=30.0,
+                max_cycles=2,
+                initial_event="quiet desk time",
+            ),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            sleep=sleeps.append,
+            input_queue=inputs,
+            output=io.StringIO(),
+        )
+
+        self.assertEqual(sleeps, [])
+        self.assertIn("quiet desk time", prompts[0])
+        self.assertIn("Direct user message: Mochi, I fixed it", prompts[1])
+
+    def test_loop_logs_behavior_result_with_input_source_when_enabled(self) -> None:
+        def fake_generate(prompt: str, config: OllamaConfig) -> BehaviorCommand:
+            del prompt, config
+            return BehaviorCommand(
+                mood="happy",
+                animation="happy",
+                text="tail wag",
+                alert=False,
+                duration_ms=3000,
+            )
+
+        inputs = HostInputQueue()
+        inputs.submit_direct_message("Mochi, I fixed it")
+        errors = io.StringIO()
+
+        run_pet_loop(
+            PetLoopConfig(
+                interval_seconds=30.0,
+                max_cycles=2,
+                initial_event="quiet desk time",
+            ),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            input_queue=inputs,
+            log_events=True,
+            output=io.StringIO(),
+            error_output=errors,
+        )
+
+        logs = errors.getvalue()
+        self.assertIn('"type":"behavior_result"', logs)
+        self.assertIn('"input_id":"initial"', logs)
+        self.assertIn('"input_id":"direct-1"', logs)
+        self.assertIn('"source":"direct_message"', logs)

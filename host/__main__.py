@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
+from .control import ControlServerConfig, start_control_server
+from .inputs import HostInputQueue
 from .ollama import OllamaConfig, generate_behavior
 from .pet_loop import PetLoopConfig, run_pet_loop
 from .transport import DeviceEndpoint, send_behavior
@@ -110,6 +113,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Stop the loop after this many behavior updates. Defaults to running forever.",
     )
+    parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="Expose a small HTTP input endpoint while --loop is running.",
+    )
+    parser.add_argument(
+        "--message-bind-host",
+        default="127.0.0.1",
+        help=(
+            "Host/IP for the HTTP message endpoint. Defaults to localhost; "
+            "use 0.0.0.0 to accept LAN clients."
+        ),
+    )
+    parser.add_argument(
+        "--message-port",
+        type=int,
+        default=8787,
+        help="Port for the HTTP message endpoint.",
+    )
     return parser
 
 
@@ -128,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     if not args.dry_run and not args.device_host:
         parser.error("--device-host is required unless --dry-run is set")
+    if args.serve and not args.loop:
+        parser.error("--serve requires --loop")
 
     endpoint = (
         DeviceEndpoint(
@@ -142,16 +166,41 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.loop:
-        run_pet_loop(
-            PetLoopConfig(
-                interval_seconds=args.interval_seconds,
-                max_cycles=args.max_cycles,
-                initial_event=args.prompt,
-            ),
-            model_config,
-            endpoint,
-            dry_run=args.dry_run,
+        input_queue = HostInputQueue() if args.serve else None
+        control_server = (
+            start_control_server(
+                ControlServerConfig(
+                    bind_host=args.message_bind_host,
+                    port=args.message_port,
+                ),
+                input_queue,
+            )
+            if input_queue is not None
+            else None
         )
+        try:
+            if control_server is not None:
+                bind_host, bind_port = control_server.address
+                print(
+                    f"message endpoint listening on http://{bind_host}:{bind_port}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            run_pet_loop(
+                PetLoopConfig(
+                    interval_seconds=args.interval_seconds,
+                    max_cycles=args.max_cycles,
+                    initial_event=args.prompt,
+                ),
+                model_config,
+                endpoint,
+                dry_run=args.dry_run,
+                input_queue=input_queue,
+                log_events=args.serve,
+            )
+        finally:
+            if control_server is not None:
+                control_server.close()
         return 0
 
     behavior = generate_behavior(args.prompt, model_config)

@@ -212,9 +212,9 @@ The first useful animation set is enough:
    - host asks the model what the pet does next → `host/pet_loop.py`
    - device animates the answer → persistent TCP behavior stream drives existing renderer
 
-6. **Add direct interaction**
-   - send the pet a message
-   - get an in-character response and behavior
+6. **Add direct interaction** — done; host can accept queued direct messages.
+   - send the pet a message → `POST /message` on the host HTTP endpoint
+   - get an in-character response and behavior → pet loop consumes the message as the next stateful event
 
 7. **Add limited indirect inputs**
    - build/test result
