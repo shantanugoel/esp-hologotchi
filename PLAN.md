@@ -245,17 +245,27 @@ The first useful animation set is enough:
    interpretation onto the ESP32-C3. Use one local owner profile; no multi-user
    identity system. Memory is fully local and private by design.
 
-   ### Architecture: deterministic body, LLM mind
+   ### Architecture: deterministic continuity, LLM expression
 
    Split Mochi's brain into two cooperating layers:
 
-   - **Body (deterministic, testable):** needs, drives, affect, presence, and a
-     small state machine compute *what Mochi feels and wants* each tick, as pure
-     functions over state plus elapsed wall-clock time. No model calls.
-   - **Mind (LLM):** given the body's compact situation summary plus a few
+   - **Continuity (deterministic, testable):** host state owns durable truth:
+     needs, drives, affect, presence, relationship state, memory records, emotional
+     bounds, recovery, and what actually happened. These are pure functions over
+     state plus elapsed wall-clock time where possible. No model calls are required
+     to know whether Mochi is lonely, rested, secure, frustrated, ignored, or
+     recovering.
+   - **Expression (LLM):** given the host's compact situation summary plus a few
      retrieved memories, the model picks exactly one in-character behavior and tiny
-     phrase from the existing closed vocabulary. The model supplies voice and
-     variety; it never owns continuity.
+     phrase from the existing closed vocabulary. The model supplies interpretation,
+     voice, variety, callbacks, and surprise inside the host-owned bounds.
+
+   The LLM may influence continuity, but it must not silently own or rewrite it.
+   Treat model-generated reflections as **candidates**, not facts. A proposed
+   learned preference, emotional association, or owner fact only becomes durable
+   memory after deterministic salience, repetition, conflict, and privacy checks.
+   This lets Mochi develop an individual personality over time without fabricating
+   history or drifting into random chatbot behavior.
 
    This makes needs, "ignored" logic, and emotional continuity deterministic and
    unit-testable while the LLM provides personality and surprise. The reactive stat
