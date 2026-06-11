@@ -22,6 +22,15 @@ class ProtocolValidationTests(unittest.TestCase):
             ),
         )
 
+    def test_accepts_expanded_pet_behavior(self) -> None:
+        behavior = parse_behavior_response(
+            '{"v":1,"kind":"behavior","mood":"happy","animation":"play","text":"play?","alert":false,"duration_ms":4500}'
+        )
+
+        self.assertEqual(behavior.mood, "happy")
+        self.assertEqual(behavior.animation, "play")
+        self.assertEqual(behavior.text, "play?")
+
     def test_accepts_behavior_wrapped_by_model_text(self) -> None:
         behavior = parse_behavior_response(
             '<think>Build status means Mochi should celebrate.</think>\n'

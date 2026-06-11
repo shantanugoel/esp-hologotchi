@@ -14,8 +14,12 @@ ANIMATION_TO_MOOD: Final[dict[str, str]] = {
     "idle": "calm",
     "blink": "calm",
     "look_around": "curious",
+    "walk": "curious",
     "happy": "happy",
+    "play": "happy",
+    "excited": "happy",
     "sleepy": "sleepy",
+    "nap": "sleepy",
     "worried": "worried",
     "alert": "alert",
 }

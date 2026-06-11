@@ -121,7 +121,9 @@ Recommended host-side pet state for V1:
 - `energy`
 - `attention`
 - `affection`
+- `playfulness`
 - `sleepiness`
+- `quiet_cycles`
 - `last_event`
 
 ## Inputs for V1
@@ -143,7 +145,7 @@ Use **newline-delimited JSON over a single Wi-Fi connection** between the host a
 Example behavior update:
 
 ```json
-{"v":1,"kind":"behavior","mood":"sleepy","animation":"curl_up_then_peek","text":"still here...","alert":false,"duration_ms":8000}
+{"v":1,"kind":"behavior","mood":"sleepy","animation":"nap","text":"still here","alert":false,"duration_ms":8000}
 ```
 
 Recommended V1 fields:
@@ -180,8 +182,12 @@ The first useful animation set is enough:
 - idle
 - blink
 - look around
+- walk
 - happy
+- play
+- excited
 - sleepy
+- nap
 - worried
 - alert
 
@@ -190,7 +196,7 @@ The first useful animation set is enough:
 1. **Lock the pet** — done; see [PET.md](PET.md).
    - Choose the shiba-like pet direction. → **Mochi**, a holographic shiba desk pet.
    - Write a short personality prompt. → playful/meme-forward system prompt in PET.md.
-   - Define the first 5 to 7 core behaviors. → 7 locked: `idle`, `blink`, `look_around`, `happy`, `sleepy`, `worried`, `alert`.
+   - Define the core behaviors. → Current set: `idle`, `blink`, `look_around`, `walk`, `happy`, `play`, `excited`, `sleepy`, `nap`, `worried`, `alert`.
 
 2. **Bring up the display** — firmware implemented in `device/`; pending on-hardware tuning.
    - SSD1351 init → `device/src/display.rs` (deterministic init sequence, blocking SPI).

@@ -60,12 +60,14 @@ struct ActiveBehavior {
 
 #[derive(Clone, Copy)]
 struct Pose {
+    body_pose: BodyPose,
     ox: i32,
     oy: i32,
     hx: i32,
     hy: i32,
     tail_x: i32,
     tail_y: i32,
+    leg_lift: i32,
     ear_drop: i32,
     ear_spread: i32,
     eye_shift: i32,
@@ -73,6 +75,15 @@ struct Pose {
     eye_style: EyeStyle,
     mouth: MouthStyle,
     alert_border: bool,
+}
+
+#[derive(Clone, Copy)]
+enum BodyPose {
+    Sit,
+    Walk,
+    PlayBow,
+    LieDown,
+    AlertStance,
 }
 
 #[derive(Clone, Copy)]
@@ -184,12 +195,14 @@ impl Scene {
 
 fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_alert: bool) -> Pose {
     let mut pose = Pose {
+        body_pose: BodyPose::Sit,
         ox: wave(global_frame, 1, 16, 1),
         oy: wave(global_frame, 1, 0, 3),
         hx: 0,
         hy: 0,
         tail_x: 0,
         tail_y: 0,
+        leg_lift: 0,
         ear_drop: 0,
         ear_spread: 0,
         eye_shift: 0,
@@ -215,6 +228,19 @@ fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_aler
             pose.hy = -1;
             pose.ear_drop = -2;
         }
+        Animation::Walk => {
+            pose.body_pose = BodyPose::Walk;
+            pose.ox = wave(anim_frame, 2, 0, 10);
+            pose.oy += wave_abs(anim_frame, 4, 0, 2);
+            pose.hx = wave(anim_frame, 2, 8, 3);
+            pose.hy -= 2;
+            pose.tail_x = wave(anim_frame, 4, 0, 6);
+            pose.tail_y = -2;
+            pose.leg_lift = wave(anim_frame, 4, 0, 5);
+            pose.ear_drop = -3;
+            pose.eye_shift = wave(anim_frame, 2, 12, 3);
+            pose.mouth = MouthStyle::Smile;
+        }
         Animation::Happy => {
             pose.oy -= wave_abs(anim_frame, 4, 0, 4);
             pose.hx = wave(anim_frame, 3, 8, 2);
@@ -223,6 +249,27 @@ fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_aler
             pose.tail_y = -wave_abs(anim_frame, 5, 0, 3);
             pose.ear_drop = -4;
             pose.eye_y = -1;
+            pose.mouth = MouthStyle::Grin;
+        }
+        Animation::Play => {
+            pose.body_pose = BodyPose::PlayBow;
+            pose.oy += 1;
+            pose.hx = wave(anim_frame, 4, 0, 4);
+            pose.hy += 4 + wave(anim_frame, 3, 16, 2);
+            pose.tail_x = wave(anim_frame, 7, 0, 8);
+            pose.tail_y = -wave_abs(anim_frame, 5, 0, 4);
+            pose.ear_drop = -5;
+            pose.eye_y = -1;
+            pose.mouth = MouthStyle::Grin;
+        }
+        Animation::Excited => {
+            pose.oy -= wave_abs(anim_frame, 8, 0, 7);
+            pose.hx = wave(anim_frame, 6, 4, 5);
+            pose.hy -= wave_abs(anim_frame, 8, 20, 4);
+            pose.tail_x = wave(anim_frame, 9, 0, 10);
+            pose.tail_y = -wave_abs(anim_frame, 6, 0, 5);
+            pose.ear_drop = -7;
+            pose.eye_y = -2;
             pose.mouth = MouthStyle::Grin;
         }
         Animation::Sleepy => {
@@ -241,6 +288,21 @@ fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_aler
                 MouthStyle::Flat
             };
         }
+        Animation::Nap => {
+            pose.body_pose = BodyPose::LieDown;
+            pose.ox = wave(global_frame, 1, 0, 1);
+            pose.oy = wave(global_frame, 1, 16, 1);
+            pose.hx = wave(anim_frame, 1, 0, 1);
+            pose.hy = wave(anim_frame, 1, 16, 1);
+            pose.ear_drop = 8;
+            pose.ear_spread = 6;
+            pose.eye_style = if anim_frame % 120 < 5 {
+                EyeStyle::Sleepy
+            } else {
+                EyeStyle::Blink
+            };
+            pose.mouth = MouthStyle::Flat;
+        }
         Animation::Worried => {
             pose.hx = wave(anim_frame, 6, 0, 1);
             pose.hy += 2;
@@ -253,9 +315,12 @@ fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_aler
             pose.mouth = MouthStyle::Frown;
         }
         Animation::Alert => {
+            pose.body_pose = BodyPose::AlertStance;
             pose.oy -= wave_abs(anim_frame, 7, 0, 3);
             pose.hx = wave(anim_frame, 8, 0, 2);
             pose.hy -= 2;
+            pose.tail_x = wave(anim_frame, 10, 0, 5);
+            pose.tail_y = -4;
             pose.ear_drop = -7;
             pose.eye_y = -1;
             pose.eye_style = EyeStyle::Alert;
@@ -283,49 +348,10 @@ where
     let tail_oy = pose.oy + pose.tail_y;
 
     // --- Body ---
-    fill_circle(target, 103 + tail_ox, 88 + tail_oy, 30, ORANGE)?;
-    stroke_circle(target, 105 + tail_ox, 90 + tail_oy, 15, ORANGE_DK, 3)?;
-    fill_circle(target, 105 + tail_ox, 90 + tail_oy, 6, CREAM)?;
-
-    fill_circle(target, 64 + body_ox, 100 + body_oy, 76, ORANGE)?;
-    fill_ellipse(target, 64 + body_ox, 102 + body_oy, 48, 54, CREAM)?;
-    fill_round_rect(target, 45 + body_ox, 96 + body_oy, 17, 34, 8, CREAM)?;
-    fill_round_rect(target, 66 + body_ox, 96 + body_oy, 17, 34, 8, CREAM)?;
-    stroke_line(
-        target,
-        pt(64, 112, body_ox, body_oy),
-        pt(64, 128, body_ox, body_oy),
-        2,
-        ORANGE_DK,
-    )?;
-    stroke_line(
-        target,
-        pt(50, 122, body_ox, body_oy),
-        pt(50, 128, body_ox, body_oy),
-        2,
-        ORANGE_DK,
-    )?;
-    stroke_line(
-        target,
-        pt(57, 122, body_ox, body_oy),
-        pt(57, 128, body_ox, body_oy),
-        2,
-        ORANGE_DK,
-    )?;
-    stroke_line(
-        target,
-        pt(72, 122, body_ox, body_oy),
-        pt(72, 128, body_ox, body_oy),
-        2,
-        ORANGE_DK,
-    )?;
-    stroke_line(
-        target,
-        pt(79, 122, body_ox, body_oy),
-        pt(79, 128, body_ox, body_oy),
-        2,
-        ORANGE_DK,
-    )?;
+    if matches!(pose.body_pose, BodyPose::LieDown) {
+        return draw_lying_mochi(target, pose);
+    }
+    draw_body(target, pose, body_ox, body_oy, tail_ox, tail_oy)?;
 
     // --- Head ---
     let ear_drop = pose.ear_drop;
@@ -342,6 +368,20 @@ where
         pt(71, 31 + ear_drop / 2, head_ox, head_oy),
         pt(87 + ear_spread / 2, 9 + ear_drop, head_ox, head_oy),
         pt(93 + ear_spread, 37 + ear_drop / 2, head_ox, head_oy),
+        ORANGE,
+    )?;
+    fill_circle(
+        target,
+        41 - ear_spread / 2 + head_ox,
+        10 + ear_drop + head_oy,
+        10,
+        ORANGE,
+    )?;
+    fill_circle(
+        target,
+        87 + ear_spread / 2 + head_ox,
+        10 + ear_drop + head_oy,
+        10,
         ORANGE,
     )?;
 
@@ -378,6 +418,173 @@ where
     draw_mouth(target, head_ox, head_oy, pose.mouth)?;
 
     Ok(())
+}
+
+fn draw_body<D>(
+    target: &mut D,
+    pose: Pose,
+    body_ox: i32,
+    body_oy: i32,
+    tail_ox: i32,
+    tail_oy: i32,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb565>,
+{
+    match pose.body_pose {
+        BodyPose::Sit => {
+            fill_circle(target, 103 + tail_ox, 88 + tail_oy, 30, ORANGE)?;
+            stroke_circle(target, 105 + tail_ox, 90 + tail_oy, 15, ORANGE_DK, 3)?;
+            fill_circle(target, 105 + tail_ox, 90 + tail_oy, 6, CREAM)?;
+
+            fill_circle(target, 64 + body_ox, 100 + body_oy, 76, ORANGE)?;
+            fill_ellipse(target, 64 + body_ox, 102 + body_oy, 48, 54, CREAM)?;
+            fill_round_rect(target, 45 + body_ox, 96 + body_oy, 17, 34, 8, CREAM)?;
+            fill_round_rect(target, 66 + body_ox, 96 + body_oy, 17, 34, 8, CREAM)?;
+            draw_toe_lines(target, body_ox, body_oy)?;
+        }
+        BodyPose::Walk => {
+            fill_circle(target, 101 + tail_ox, 82 + tail_oy, 28, ORANGE)?;
+            stroke_circle(target, 103 + tail_ox, 84 + tail_oy, 13, ORANGE_DK, 3)?;
+            fill_circle(target, 103 + tail_ox, 84 + tail_oy, 5, CREAM)?;
+
+            fill_ellipse(target, 63 + body_ox, 100 + body_oy, 62, 40, ORANGE)?;
+            fill_ellipse(target, 63 + body_ox, 104 + body_oy, 42, 24, CREAM)?;
+            let step = pose.leg_lift;
+            fill_round_rect(target, 41 + body_ox, 106 + body_oy + step, 12, 23, 6, CREAM)?;
+            fill_round_rect(target, 55 + body_ox, 108 + body_oy - step, 12, 21, 6, CREAM)?;
+            fill_round_rect(target, 73 + body_ox, 107 + body_oy - step, 12, 22, 6, CREAM)?;
+            fill_round_rect(target, 87 + body_ox, 106 + body_oy + step, 12, 23, 6, CREAM)?;
+        }
+        BodyPose::PlayBow => {
+            fill_circle(target, 101 + tail_ox, 76 + tail_oy, 30, ORANGE)?;
+            stroke_circle(target, 103 + tail_ox, 78 + tail_oy, 14, ORANGE_DK, 3)?;
+            fill_circle(target, 103 + tail_ox, 78 + tail_oy, 5, CREAM)?;
+
+            fill_ellipse(target, 70 + body_ox, 97 + body_oy, 66, 40, ORANGE)?;
+            fill_ellipse(target, 58 + body_ox, 107 + body_oy, 40, 22, CREAM)?;
+            fill_round_rect(target, 42 + body_ox, 102 + body_oy, 14, 27, 7, CREAM)?;
+            fill_round_rect(target, 58 + body_ox, 103 + body_oy, 14, 26, 7, CREAM)?;
+            fill_round_rect(target, 84 + body_ox, 92 + body_oy, 15, 35, 7, ORANGE)?;
+            fill_round_rect(target, 91 + body_ox, 95 + body_oy, 12, 32, 6, CREAM)?;
+        }
+        BodyPose::AlertStance => {
+            fill_circle(target, 102 + tail_ox, 84 + tail_oy, 27, ORANGE)?;
+            stroke_circle(target, 104 + tail_ox, 86 + tail_oy, 12, ORANGE_DK, 3)?;
+            fill_circle(target, 104 + tail_ox, 86 + tail_oy, 5, CREAM)?;
+
+            fill_ellipse(target, 64 + body_ox, 98 + body_oy, 56, 58, ORANGE)?;
+            fill_ellipse(target, 64 + body_ox, 103 + body_oy, 38, 42, CREAM)?;
+            fill_round_rect(target, 39 + body_ox, 92 + body_oy, 14, 35, 7, CREAM)?;
+            fill_round_rect(target, 75 + body_ox, 92 + body_oy, 14, 35, 7, CREAM)?;
+            stroke_line(
+                target,
+                pt(64, 111, body_ox, body_oy),
+                pt(64, 128, body_ox, body_oy),
+                2,
+                ORANGE_DK,
+            )?;
+            stroke_line(
+                target,
+                pt(45, 118, body_ox, body_oy),
+                pt(45, 128, body_ox, body_oy),
+                2,
+                ORANGE_DK,
+            )?;
+            stroke_line(
+                target,
+                pt(82, 118, body_ox, body_oy),
+                pt(82, 128, body_ox, body_oy),
+                2,
+                ORANGE_DK,
+            )?;
+        }
+        BodyPose::LieDown => {}
+    }
+
+    Ok(())
+}
+
+fn draw_toe_lines<D>(target: &mut D, ox: i32, oy: i32) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb565>,
+{
+    stroke_line(
+        target,
+        pt(64, 112, ox, oy),
+        pt(64, 128, ox, oy),
+        2,
+        ORANGE_DK,
+    )?;
+    stroke_line(
+        target,
+        pt(50, 122, ox, oy),
+        pt(50, 128, ox, oy),
+        2,
+        ORANGE_DK,
+    )?;
+    stroke_line(
+        target,
+        pt(57, 122, ox, oy),
+        pt(57, 128, ox, oy),
+        2,
+        ORANGE_DK,
+    )?;
+    stroke_line(
+        target,
+        pt(72, 122, ox, oy),
+        pt(72, 128, ox, oy),
+        2,
+        ORANGE_DK,
+    )?;
+    stroke_line(
+        target,
+        pt(79, 122, ox, oy),
+        pt(79, 128, ox, oy),
+        2,
+        ORANGE_DK,
+    )
+}
+
+fn draw_lying_mochi<D>(target: &mut D, pose: Pose) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb565>,
+{
+    let ox = pose.ox;
+    let oy = pose.oy + 4;
+    let head_ox = ox + pose.hx - 25;
+    let head_oy = oy + pose.hy + 31;
+
+    fill_ellipse(target, 72 + ox, 96 + oy, 80, 34, ORANGE)?;
+    fill_ellipse(target, 70 + ox, 102 + oy, 54, 19, CREAM)?;
+    fill_circle(target, 111 + ox, 88 + oy, 24, ORANGE)?;
+    stroke_circle(target, 112 + ox, 89 + oy, 12, ORANGE_DK, 3)?;
+    fill_circle(target, 112 + ox, 89 + oy, 5, CREAM)?;
+    fill_round_rect(target, 48 + ox, 105 + oy, 20, 12, 6, CREAM)?;
+    fill_round_rect(target, 75 + ox, 105 + oy, 24, 12, 6, CREAM)?;
+
+    fill_triangle(
+        target,
+        pt(49, 39, head_ox, head_oy),
+        pt(34, 31, head_ox, head_oy),
+        pt(39, 51, head_ox, head_oy),
+        ORANGE,
+    )?;
+    fill_triangle(
+        target,
+        pt(73, 39, head_ox, head_oy),
+        pt(87, 31, head_ox, head_oy),
+        pt(82, 51, head_ox, head_oy),
+        ORANGE,
+    )?;
+    fill_circle(target, 34 + head_ox, 32 + head_oy, 9, ORANGE)?;
+    fill_circle(target, 87 + head_ox, 32 + head_oy, 9, ORANGE)?;
+    fill_circle(target, 61 + head_ox, 57 + head_oy, 56, ORANGE)?;
+    fill_ellipse(target, 61 + head_ox, 73 + head_oy, 45, 29, CREAM)?;
+    fill_circle(target, 49 + head_ox, 47 + head_oy, 6, CREAM)?;
+    fill_circle(target, 73 + head_ox, 47 + head_oy, 6, CREAM)?;
+    draw_eyes(target, head_ox - 3, head_oy + 12, 0, pose.eye_style)?;
+    draw_mouth(target, head_ox - 3, head_oy + 11, pose.mouth)
 }
 
 fn draw_eyes<D>(
