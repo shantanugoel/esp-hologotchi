@@ -233,6 +233,148 @@ The first useful animation set is enough:
      `device/src/render.rs`
    - film the first demo → shot list and trigger commands in [DEMO.md](DEMO.md)
 
+9. **Add memory and deeper pet psychology** — planned; host-side only.
+   - keep all memory, relationship modeling, preference learning, and emotional
+     continuity on the host; do not move any of this onto the ESP32-C3
+   - preserve the current Wi-Fi behavior protocol unless new renderer
+     animations are explicitly added later
+   - make Mochi feel like a persistent pet, not a stateless chatbot: it should
+     remember emotionally meaningful moments, learn what makes it happy or sad,
+     and sometimes become sad, needy, jealous, worried, or angry for reasons the
+     owner can understand
+   - allow strong negative emotion as the upper bound, like a real pet or kid
+     having a hard moment, but keep the normal operating range medium:
+     dramatic, pouty, grumpy, avoidant, or upset, then able to recover through
+     time, affection, play, apologies, successful outcomes, or quiet rest
+   - use one local owner profile for V1; no multi-user identity system
+   - keep memory fully local and private by design, with explicit forget/reset
+     controls before memory is considered complete
+   - let remembered things influence body language and mood most of the time;
+     allow rare short text references when they are emotionally useful and still
+     fit Mochi's tiny pet voice
+
+   Recommended host modules:
+
+   - `host/memory.py`: local memory store, event capture, salience scoring,
+     bounded retrieval, and durable memory records
+   - `host/affect.py`: deterministic need, mood, attachment, trust, loneliness,
+     frustration, forgiveness, and recovery transitions
+   - `host/reflection.py`: periodic consolidation of repeated events into
+     stable facts and preferences
+   - `host/profile.py`: single-owner local profile, Mochi preferences, learned
+     owner preferences, and forget/reset operations
+
+   Start with SQLite for persistence. Keep the first retrieval implementation
+   simple and testable with tags, recency, importance, and SQLite full-text
+   search if needed. Embeddings can be added later through Ollama, but vector
+   search should not be required for the first useful memory system.
+
+   Memory types:
+
+   - **short-term memory:** recent direct messages, recent events, recent
+     behavior choices, recent phrases, unresolved emotional threads, and the
+     current interaction arc
+   - **episodic memory:** specific emotionally meaningful moments, such as
+     praise, ignored alerts, repeated build failures, successful tests,
+     apologies, long absences, or affection
+   - **semantic memory:** stable learned facts, such as owner preferences,
+     recurring projects, phrases the owner uses, things Mochi likes, and things
+     that reliably make Mochi worried, happy, proud, lonely, or upset
+   - **affect memory:** learned emotional associations that change future
+     reactions, such as failed builds making Mochi protective, praise making it
+     proud, being ignored making it lonely, or harsh messages making it hurt
+   - **relationship state:** attachment, trust, affection, loneliness,
+     frustration, play drive, security, forgiveness, and confidence
+
+   Durable memory records should be small and structured:
+
+   - timestamp
+   - source
+   - short summary
+   - tags/entities
+   - emotional valence
+   - emotional intensity
+   - importance
+   - decay or retention policy
+   - last recalled time
+   - recall count
+
+   The host loop should use this lifecycle:
+
+   1. Capture the current input or quiet-cycle event.
+   2. Score salience. Store meaningful moments; do not store every idle tick.
+   3. Update short-term state and unresolved emotional threads.
+   4. Retrieve a bounded set of relevant memories and learned facts.
+   5. Build a compact prompt context with current pet state, relationship
+      state, retrieved memories, learned preferences, and the current event.
+   6. Ask the model for one validated behavior update using the existing schema.
+   7. Apply deterministic affect updates after the behavior is chosen.
+   8. Persist any new important memory.
+   9. Periodically consolidate repeated events into stable facts or preferences.
+
+   Prompt context should stay compact. Prefer a few emotionally relevant
+   memories over a long history dump. Example shape:
+
+   ```text
+   Relevant memories:
+   - Yesterday, owner praised Mochi after tests passed. Mochi felt proud.
+   - Earlier today, two builds failed in a row. Mochi became worried.
+   - Owner often says "good pup" when pleased. Mochi loves that.
+
+   Relationship:
+   - affection: 78/100
+   - trust: 72/100
+   - loneliness: 34/100
+   - frustration: 18/100
+   - current thread: Mochi wants attention after a quiet stretch.
+   ```
+
+   Negative emotion rules:
+
+   - ignored too long → needy, sad, then grumpy or avoidant for a short time
+   - repeated failures → worried, protective, then stressed or frustrated
+   - affection and praise → happy, bonded, playful, proud
+   - harsh owner messages → hurt, sad, defensive, or briefly angry
+   - owner returns after absence → excited if secure; pouty or dramatic if
+     lonely or frustrated
+   - important alert dismissed → anxious, annoyed, or insistent for a bounded
+     period
+   - apologies, affection, play, time, and successful outcomes should repair
+     negative states instead of letting them become permanent
+
+   Renderer compatibility:
+
+   - sad can initially map to `worried`, `sleepy`, or `idle`
+   - angry/grumpy can initially map to `worried`, `look_around`, `walk`, or
+     `alert`, depending on intensity
+   - needy can map to `play`, `look_around`, or `happy`
+   - pouty can map to `idle`, `sleepy`, or `worried` with rare short text
+   - only add explicit animations such as `sad`, `pout`, `grumpy`, `love`, or
+     `confused` after the memory system proves they are needed
+
+   Required controls:
+
+   - inspect local memory summary
+   - forget one memory
+   - forget memories by tag/source/time range
+   - reset Mochi's memory and relationship state
+   - disable memory writes for a session
+
+   Acceptance for Phase 9:
+
+   - Mochi remembers meaningful interactions across host restarts
+   - Mochi retrieves only a bounded, relevant memory context for each model call
+   - repeated owner behavior changes relationship state in a testable way
+   - Mochi can become sad, needy, worried, jealous, grumpy, or angry for
+     understandable reasons
+   - negative emotions are bounded, recoverable, and not manipulative
+   - rare remembered text references work without turning Mochi into a chatbot
+   - memory is fully local and has working forget/reset controls
+   - host tests cover memory capture, retrieval, consolidation, affect
+     transitions, prompt construction, and forget/reset behavior
+   - device firmware and wire protocol remain unchanged unless new animations
+     are deliberately added later
+
 ## Acceptance for V1
 
 V1 is successful when:
