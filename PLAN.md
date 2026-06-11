@@ -4,7 +4,7 @@
 
 Hologotchi is a tiny holographic virtual pet for a desk: an ESP32 drives a 128x128 RGB OLED viewed through a dichroic cube, while a host service decides what the pet is feeling and doing.
 
-V1 should be **one lovable pet**, not a general reactive platform. The goal is a pet with a clear personality that:
+The product is **one lovable pet**, not a general reactive platform. The goal is a pet with a clear personality that:
 
 - feels alive even when nothing is happening
 - responds to direct prompts in character
@@ -13,21 +13,21 @@ V1 should be **one lovable pet**, not a general reactive platform. The goal is a
 
 The fastest path is to keep the device simple, keep the pet specific, and keep the control loop high-level.
 
-## V1 Decisions
+## Product Decisions
 
 - **Transport:** Wi-Fi only for runtime control. No USB control protocol in the product plan. USB may still be used for flashing and power.
-- **MCU:** Keep **ESP32-C3** for V1 unless real implementation proves it too tight. The model stays off-device, so C3 should be enough for SSD1351 rendering plus Wi-Fi if the renderer stays simple.
+- **MCU:** Keep **ESP32-C3** unless real implementation proves it too tight. The model stays off-device, so C3 should be enough for SSD1351 rendering plus Wi-Fi if the renderer stays simple.
 - **Brain:** The host or local network service is the pet brain. The ESP only renders, animates, connects to Wi-Fi, and holds short-lived local state.
 - **Host stack:** Python first.
 - **Model runtime:** Ollama first.
 - **Default model family:** `qwen3.5`.
 - **Default preset:** `qwen3.5:4b`.
 - **Low-memory fallback:** `qwen3.5:2b`.
-- **Scope rule:** One pet, one transport, one control loop, a few inputs.
+- **Scope rule:** One pet, one transport, one control loop, and only the inputs that make Mochi feel more alive.
 
 ## Hardware
 
-- MCU: ESP32-C3 for V1.
+- MCU: ESP32-C3 for now.
 - Display: Waveshare 1.5 inch RGB OLED, 128x128, SSD1351, SPI, RGB565.
 - Optics: dichroic cube, so orientation and mirror correction are part of rendering correctness.
 - Runtime transport: Wi-Fi on the local network.
@@ -36,7 +36,7 @@ The fastest path is to keep the device simple, keep the pet specific, and keep t
 
 ### ESP32-C3 vs ESP32-S3
 
-For this simpler Wi-Fi-first product, **ESP32-C3 is still a valid V1 target**. It does not need to become ESP32-S3 just because the control path moved to Wi-Fi.
+For this simpler Wi-Fi-first product, **ESP32-C3 is still a valid target**. It does not need to become ESP32-S3 just because the control path moved to Wi-Fi.
 
 Move to **ESP32-S3** only if one of these becomes true:
 
@@ -48,7 +48,7 @@ Until that happens, keeping C3 avoids a hardware pivot and keeps the project mov
 
 ## Pet Direction
 
-V1 should choose one pet and commit to it.
+Choose one pet and commit to it.
 
 Recommended default: **a shiba-like desk pet** with internet-pet energy. Think “small holographic shiba companion,” not a generic blob. It should read instantly through the cube, have a strong silhouette, and be easy to animate with a tiny asset set.
 
@@ -115,7 +115,7 @@ Instead:
 
 This keeps the product simple while still making the LLM feel like the brain.
 
-Recommended host-side pet state for V1:
+Current host-side pet state:
 
 - `mood`
 - `energy`
@@ -126,15 +126,15 @@ Recommended host-side pet state for V1:
 - `quiet_cycles`
 - `last_event`
 
-## Inputs for V1
+## Inputs
 
-Keep V1 narrow. Only support:
+Keep inputs narrow and high-signal. The current supported inputs are:
 
 - direct user messages to the pet
 - build/test success or failure
 - one generic important alert path
 
-Everything else is later. Do not build a large adapter system yet.
+Add new inputs only when they clearly improve the pet. Do not build a large adapter system.
 
 ## Wi-Fi Control Path
 
@@ -148,7 +148,7 @@ Example behavior update:
 {"v":1,"kind":"behavior","mood":"sleepy","animation":"nap","text":"still here","alert":false,"duration_ms":8000}
 ```
 
-Recommended V1 fields:
+Current behavior fields:
 
 - `v`
 - `kind`
@@ -158,7 +158,7 @@ Recommended V1 fields:
 - `alert`
 - `duration_ms`
 
-Keep messages high-level. V1 does **not** need:
+Keep messages high-level. The current wire contract does **not** need:
 
 - a generic event schema
 - a reflex engine
@@ -242,8 +242,8 @@ The first useful animation set is enough:
    existing one-way behavior protocol and the closed animation vocabulary.
 
    Keep everything here on the host. Do not move memory, planning, or
-   interpretation onto the ESP32-C3 (AGENTS.md). Use one local owner profile for
-   V1; no multi-user identity system. Memory is fully local and private by design.
+   interpretation onto the ESP32-C3. Use one local owner profile; no multi-user
+   identity system. Memory is fully local and private by design.
 
    ### Architecture: deterministic body, LLM mind
 
@@ -466,7 +466,7 @@ The first useful animation set is enough:
    - the device firmware and wire protocol are unchanged for this phase.
 
 10. **Device → host uplink + cube "boop" (first physical input)** — optional
-    hardware expansion; deliberately revisits the V1 one-way rule.
+    hardware expansion; deliberately revisits the current one-way wire rule.
 
     The single biggest change for *any* on-device input: today the wire protocol is
     **one-way (host → device)** — the device only receives behavior frames and never
@@ -474,7 +474,7 @@ The first useful animation set is enough:
 
     - keep the existing downlink `behavior` frame exactly as-is.
     - add one new versioned uplink message family on the *same* single TCP
-      connection (AGENTS.md: one transport, one connection), e.g.
+      connection (one transport, one connection), e.g.
       `{"v":1,"kind":"input","source":"touch","value":1,"ms":1234}`.
     - the host reads uplink frames and feeds them into the same input queue that
       `/message`, `/build`, `/test`, and `/alert` already use, so Phase 9's brain
@@ -515,9 +515,9 @@ The first useful animation set is enough:
     Guardrail: every physical input still flows through the host brain. The device
     senses and renders; it never decides. This preserves "the host is the brain."
 
-## Acceptance for V1
+## Achieved Baseline
 
-V1 is successful when:
+The initial useful product baseline is in place when:
 
 - the device boots into a recognizable idle pet without the host
 - the device joins Wi-Fi and reconnects after a drop
@@ -526,7 +526,7 @@ V1 is successful when:
 - the pet reacts to build/test changes and one alert path
 - a short demo makes it feel like a real desk pet, not a generic animated display
 
-## Explicitly Out of Scope for V1
+## Deferred
 
 - USB runtime control
 - a large event framework
@@ -536,8 +536,8 @@ V1 is successful when:
 - many input adapters
 - on-device audio
 - on-device model inference
-- broad V2 architecture design before the pet is already fun
+- broad future architecture design before the pet is already fun
 
-These exclusions are intentional for V1. Phases 10–11 above revisit on-device
-inputs (a device→host uplink, cube touch, light/presence/motion) and the voice
-question deliberately, after the host-only Phase 9 brain proves the pet is fun.
+These exclusions are intentional. Phases 10–11 above revisit on-device inputs
+(a device→host uplink, cube touch, light/presence/motion) and the voice question
+deliberately, after the host-only Phase 9 brain proves the pet is fun.
