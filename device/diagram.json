@@ -52,25 +52,25 @@
         ],
         [
             "oled:MOSI",
-            "esp:5",
+            "esp:6",
             "green",
             []
         ],
         [
             "oled:CS",
-            "esp:6",
+            "esp:7",
             "orange",
             []
         ],
         [
             "oled:DC",
-            "esp:7",
+            "esp:3",
             "blue",
             []
         ],
         [
             "oled:RST",
-            "esp:10",
+            "esp:2",
             "violet",
             []
         ]

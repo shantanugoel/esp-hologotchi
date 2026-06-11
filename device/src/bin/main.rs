@@ -53,8 +53,8 @@ async fn main(spawner: Spawner) -> ! {
     info!("Embassy initialized!");
 
     // --- SSD1351 OLED over blocking SPI ---
-    // Pin map (tunable at hardware bring-up): CLK=GPIO4, MOSI=GPIO5, CS=GPIO6,
-    // DC=GPIO7, RST=GPIO10.
+    // Pin map matching the current hardware wiring:
+    // CLK=GPIO4, MOSI(DIN)=GPIO6, CS=GPIO7, DC=GPIO3, RST=GPIO2.
     let spi = Spi::new(
         peripherals.SPI2,
         SpiConfig::default()
@@ -63,16 +63,16 @@ async fn main(spawner: Spawner) -> ! {
     )
     .expect("Failed to initialize SPI")
     .with_sck(peripherals.GPIO4)
-    .with_mosi(peripherals.GPIO5);
+    .with_mosi(peripherals.GPIO6);
 
-    let dc = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
-    let cs = Output::new(peripherals.GPIO6, Level::High, OutputConfig::default());
-    let rst = Output::new(peripherals.GPIO10, Level::High, OutputConfig::default());
+    let dc = Output::new(peripherals.GPIO3, Level::Low, OutputConfig::default());
+    let cs = Output::new(peripherals.GPIO7, Level::High, OutputConfig::default());
+    let rst = Output::new(peripherals.GPIO2, Level::High, OutputConfig::default());
 
     let mut display = Ssd1351::new(spi, dc, cs, rst);
     if let Err(e) = display.init(Orientation::CUBE) {
         panic!(
-            "SSD1351 init failed on SPI2 (CLK=GPIO4/MOSI=GPIO5/CS=GPIO6/DC=GPIO7/RST=GPIO10): \
+            "SSD1351 init failed on SPI2 (CLK=GPIO4/MOSI=GPIO6/CS=GPIO7/DC=GPIO3/RST=GPIO2): \
              {:?}. Check wiring and power.",
             e
         );
