@@ -233,87 +233,123 @@ The first useful animation set is enough:
      `device/src/render.rs`
    - film the first demo → shot list and trigger commands in [DEMO.md](DEMO.md)
 
-9. **Add memory and deeper pet psychology** — planned; host-side only.
-   - keep all memory, relationship modeling, preference learning, and emotional
-     continuity on the host; do not move any of this onto the ESP32-C3
-   - preserve the current Wi-Fi behavior protocol unless new renderer
-     animations are explicitly added later
-   - make Mochi feel like a persistent pet, not a stateless chatbot: it should
-     remember emotionally meaningful moments, learn what makes it happy or sad,
-     and sometimes become sad, needy, jealous, worried, or angry for reasons the
-     owner can understand
-   - allow strong negative emotion as the upper bound, like a real pet or kid
-     having a hard moment, but keep the normal operating range medium:
-     dramatic, pouty, grumpy, avoidant, or upset, then able to recover through
-     time, affection, play, apologies, successful outcomes, or quiet rest
-   - use one local owner profile for V1; no multi-user identity system
-   - keep memory fully local and private by design, with explicit forget/reset
-     controls before memory is considered complete
-   - let remembered things influence body language and mood most of the time;
-     allow rare short text references when they are emotionally useful and still
-     fit Mochi's tiny pet voice
+9. **Pet psychology, memory, and self-direction (host-only brain)** — planned; no
+   device or wire-protocol changes required for this phase.
 
-   Recommended host modules:
+   Goal: turn Mochi from a stateless reaction-picker into a persistent creature
+   with needs, moods, memory, presence awareness, and self-direction, so it feels
+   genuinely alive and surprises its owner — entirely on the host, reusing the
+   existing one-way behavior protocol and the closed animation vocabulary.
 
-   - `host/memory.py`: local memory store, event capture, salience scoring,
-     bounded retrieval, and durable memory records
-   - `host/affect.py`: deterministic need, mood, attachment, trust, loneliness,
-     frustration, forgiveness, and recovery transitions
-   - `host/reflection.py`: periodic consolidation of repeated events into
-     stable facts and preferences
-   - `host/profile.py`: single-owner local profile, Mochi preferences, learned
-     owner preferences, and forget/reset operations
+   Keep everything here on the host. Do not move memory, planning, or
+   interpretation onto the ESP32-C3 (AGENTS.md). Use one local owner profile for
+   V1; no multi-user identity system. Memory is fully local and private by design.
 
-   Start with SQLite for persistence. Keep the first retrieval implementation
-   simple and testable with tags, recency, importance, and SQLite full-text
-   search if needed. Embeddings can be added later through Ollama, but vector
-   search should not be required for the first useful memory system.
+   ### Architecture: deterministic body, LLM mind
+
+   Split Mochi's brain into two cooperating layers:
+
+   - **Body (deterministic, testable):** needs, drives, affect, presence, and a
+     small state machine compute *what Mochi feels and wants* each tick, as pure
+     functions over state plus elapsed wall-clock time. No model calls.
+   - **Mind (LLM):** given the body's compact situation summary plus a few
+     retrieved memories, the model picks exactly one in-character behavior and tiny
+     phrase from the existing closed vocabulary. The model supplies voice and
+     variety; it never owns continuity.
+
+   This makes needs, "ignored" logic, and emotional continuity deterministic and
+   unit-testable while the LLM provides personality and surprise. The reactive stat
+   nudges already in `host/state.py` are promoted from after-the-fact bookkeeping
+   to the actual driver of each prompt.
+
+   ### 9a — Needs, drives, and real-time decay (the tamagotchi core)
+
+   A real tamagotchi has needs that decay in **wall-clock time**, are replenished by
+   owner action, and have visible, bounded, recoverable consequences when neglected.
+
+   - drives decay over real elapsed time, not loop ticks: `social`, `play`, `rest`,
+     `stimulation`, plus the existing `energy`/`sleepiness`.
+   - owner actions and good events replenish drives; neglect lets them fall.
+   - escalating but recoverable states: content → restless → needy → sad/grumpy →
+     withdrawn (a low-energy "sulk"), always recoverable through attention, play,
+     praise, rest, or apology.
+   - a slow **bond level** that grows over days of healthy interaction: the
+     long-term arc that makes Mochi worth keeping on the desk.
+
+   Decay and recovery are integer/fixed-point, driven by elapsed seconds since the
+   last update, so host restarts and variable loop cadence stay correct.
+
+   ### 9b — Presence and "being ignored" (the host computer is the sensor)
+
+   "How does it know it's being ignored?" is a first-class requirement. The host
+   computer is already a rich sensor; use it before adding any hardware. Replace the
+   single `quiet_cycles` counter with a presence state machine that distinguishes:
+
+   - **away** — no host activity and/or the screen is locked. Mochi waits calmly or
+     naps; a genuine absence is not treated as rejection.
+   - **present-but-ignoring** — keyboard/mouse active or a foreground app in use,
+     but no direct interaction with Mochi for a while. *This* is real "ignored," and
+     it grows loneliness/neediness over real time.
+   - **engaged** — a recent direct message, boop, or acknowledged alert.
+
+   Signals, cheapest first, all host-side and opt-in:
+
+   - OS idle time since last input, and screen-lock state
+   - foreground app / whether the owner is heads-down vs idle
+   - time-of-day and a learned daily routine ("usually here by 9; it's 9:40")
+   - optional later: webcam face-presence, or calendar busy/free
+
+   With presence, Mochi behaves like a pet: excited when you return after a real
+   absence, pouty if you've been at the desk ignoring it, sleepy when the screen and
+   room go quiet at night. (Note: **jealousy** needs a target — e.g. long focus on
+   one app — so it belongs here once a foreground-app signal exists, not as a random
+   mood.)
+
+   ### 9c — Memory
+
+   Keep memory local, structured, and bounded. Start with SQLite for persistence;
+   keep the first retrieval simple and testable with tags, recency, importance, and
+   SQLite full-text search. Embeddings via Ollama can come later; vector search must
+   not be required for the first useful memory system.
 
    Memory types:
 
-   - **short-term memory:** recent direct messages, recent events, recent
-     behavior choices, recent phrases, unresolved emotional threads, and the
-     current interaction arc
-   - **episodic memory:** specific emotionally meaningful moments, such as
-     praise, ignored alerts, repeated build failures, successful tests,
-     apologies, long absences, or affection
-   - **semantic memory:** stable learned facts, such as owner preferences,
-     recurring projects, phrases the owner uses, things Mochi likes, and things
-     that reliably make Mochi worried, happy, proud, lonely, or upset
-   - **affect memory:** learned emotional associations that change future
-     reactions, such as failed builds making Mochi protective, praise making it
-     proud, being ignored making it lonely, or harsh messages making it hurt
-   - **relationship state:** attachment, trust, affection, loneliness,
-     frustration, play drive, security, forgiveness, and confidence
+   - **short-term:** recent messages, events, behavior choices, phrases, unresolved
+     emotional threads, the current interaction arc.
+   - **episodic:** specific meaningful moments — praise, ignored alerts, repeated
+     build failures, passing tests, apologies, long absences, affection.
+   - **semantic:** stable learned facts — owner preferences, recurring projects,
+     phrases the owner uses, things Mochi likes, things that reliably move its mood.
+   - **affect:** learned emotional associations that change future reactions —
+     failed builds making Mochi protective, praise making it proud, being ignored
+     making it lonely.
+   - **relationship state:** attachment, trust, affection, loneliness, frustration,
+     play drive, security, forgiveness, confidence — plus the 9a bond level.
 
-   Durable memory records should be small and structured:
+   Durable memory records stay small and structured: timestamp, source, short
+   summary, tags/entities, emotional valence, emotional intensity, importance,
+   decay/retention policy, last-recalled time, recall count.
 
-   - timestamp
-   - source
-   - short summary
-   - tags/entities
-   - emotional valence
-   - emotional intensity
-   - importance
-   - decay or retention policy
-   - last recalled time
-   - recall count
+   **Salience rubric** (decides what to store; do not store every idle tick): score
+   on valence magnitude, novelty, whether the owner initiated it, alert status, and
+   repetition. Store only above a threshold; let importance decay over time and tick
+   up on recall.
 
-   The host loop should use this lifecycle:
+   Host-loop lifecycle each tick:
 
-   1. Capture the current input or quiet-cycle event.
-   2. Score salience. Store meaningful moments; do not store every idle tick.
+   1. Capture the current input or the body's self-directed situation.
+   2. Score salience; store meaningful moments only.
    3. Update short-term state and unresolved emotional threads.
-   4. Retrieve a bounded set of relevant memories and learned facts.
-   5. Build a compact prompt context with current pet state, relationship
-      state, retrieved memories, learned preferences, and the current event.
-   6. Ask the model for one validated behavior update using the existing schema.
-   7. Apply deterministic affect updates after the behavior is chosen.
+   4. Retrieve a bounded, ranked set of relevant memories and learned facts.
+   5. Build a compact prompt: current pet/needs/relationship state, a few retrieved
+      memories, learned preferences, and the current situation.
+   6. Ask the model for one validated behavior using the existing schema.
+   7. Apply deterministic affect/drive updates.
    8. Persist any new important memory.
-   9. Periodically consolidate repeated events into stable facts or preferences.
+   9. Periodically consolidate repeated events into stable facts (see 9e).
 
-   Prompt context should stay compact. Prefer a few emotionally relevant
-   memories over a long history dump. Example shape:
+   Keep the prompt compact — prefer a few emotionally relevant memories over a long
+   history dump. Example shape:
 
    ```text
    Relevant memories:
@@ -329,51 +365,155 @@ The first useful animation set is enough:
    - current thread: Mochi wants attention after a quiet stretch.
    ```
 
-   Negative emotion rules:
+   ### 9d — Surprise and self-direction
 
-   - ignored too long → needy, sad, then grumpy or avoidant for a short time
-   - repeated failures → worried, protective, then stressed or frustrated
-   - affection and praise → happy, bonded, playful, proud
-   - harsh owner messages → hurt, sad, defensive, or briefly angry
-   - owner returns after absence → excited if secure; pouty or dramatic if
-     lonely or frustrated
-   - important alert dismissed → anxious, annoyed, or insistent for a bounded
-     period
-   - apologies, affection, play, time, and successful outcomes should repair
-     negative states instead of letting them become permanent
+   "Surprise the owner often" needs explicit mechanisms; a small (4B) model left to
+   its own devices repeats itself. Add:
 
-   Renderer compatibility:
+   - **novelty pressure:** avoid repeating the recent animation *and* phrase (extend
+     the existing `recent_phrases` guard to animations; weight retrieval toward
+     fresh material).
+   - **spontaneous callbacks:** occasionally inject one relevant old memory so Mochi
+     "brings something up" days later.
+   - **rare special moments:** milestones (100th green build), streaks, first
+     interaction of the day, day/night beats — low-probability, earned-feeling
+     events.
+   - **self-initiated nudges:** when a drive crosses a threshold, Mochi may start a
+     game, patrol, or — rarely and bounded — ask for attention on its own, including
+     a gentle self-made alert ("heads-down 2h?").
+   - **adaptive cadence:** slow the loop right down when napping or away, speed it up
+     on events. This feels alive and avoids pinning the model on the GPU 24/7.
 
-   - sad can initially map to `worried`, `sleepy`, or `idle`
-   - angry/grumpy can initially map to `worried`, `look_around`, `walk`, or
-     `alert`, depending on intensity
-   - needy can map to `play`, `look_around`, or `happy`
-   - pouty can map to `idle`, `sleepy`, or `worried` with rare short text
-   - only add explicit animations such as `sad`, `pout`, `grumpy`, `love`, or
-     `confused` after the memory system proves they are needed
+   ### 9e — Emotional range, privacy, controls, and safety rails
 
-   Required controls:
+   Emotional range (normal operating range medium; strong negative as a bounded
+   upper edge, like a real pet having a hard moment):
 
-   - inspect local memory summary
+   - ignored too long → needy, sad, then briefly grumpy or avoidant
+   - repeated failures → worried, protective, then stressed
+   - affection/praise → happy, bonded, playful, proud
+   - harsh owner messages → hurt, sad, defensive, briefly upset
+   - owner returns after absence → excited if secure; pouty/dramatic if lonely
+   - important alert dismissed → anxious or insistent for a bounded period
+   - apologies, affection, play, time, and good outcomes repair negative states;
+     nothing becomes permanent, and Mochi is never manipulative.
+
+   Renderer compatibility (ship psychology with no firmware change by mapping new
+   feelings onto the existing 11 animations):
+
+   - sad → `worried`, `sleepy`, or `idle`
+   - angry/grumpy → `worried`, `look_around`, `walk`, or `alert` by intensity
+   - needy → `play`, `look_around`, or `happy`
+   - pouty → `idle`, `sleepy`, or `worried`, with rare short text
+   - only add explicit `sad`/`pout`/`grumpy`/`love`/`confused` animations later, if
+     the memory system proves they are needed.
+
+   Required controls (memory is not complete until these work):
+
+   - inspect a local memory summary
    - forget one memory
-   - forget memories by tag/source/time range
+   - forget by tag/source/time range
    - reset Mochi's memory and relationship state
    - disable memory writes for a session
 
-   Acceptance for Phase 9:
+   Persistence and safety rails:
 
-   - Mochi remembers meaningful interactions across host restarts
-   - Mochi retrieves only a bounded, relevant memory context for each model call
-   - repeated owner behavior changes relationship state in a testable way
-   - Mochi can become sad, needy, worried, jealous, grumpy, or angry for
-     understandable reasons
-   - negative emotions are bounded, recoverable, and not manipulative
-   - rare remembered text references work without turning Mochi into a chatbot
-   - memory is fully local and has working forget/reset controls
-   - host tests cover memory capture, retrieval, consolidation, affect
-     transitions, prompt construction, and forget/reset behavior
-   - device firmware and wire protocol remain unchanged unless new animations
-     are deliberately added later
+   - version the SQLite schema and ship forward migrations; forget/reset operate on
+     the versioned store.
+   - guard concurrency: HTTP inputs arrive on `ThreadingHTTPServer` threads while the
+     loop reads/writes state and memory — serialize memory/state access (single
+     writer or a lock) so inputs and the loop never corrupt each other.
+   - **consolidation guardrail:** derive "facts" from observed counters/patterns, not
+     free model invention; if the model proposes a fact, require repetition/threshold
+     before it becomes durable, so Mochi never fabricates beliefs about the owner.
+   - any activity/presence sensing (9b) is explicit opt-in and stays local.
+
+   ### Suggested host modules
+
+   - `host/affect.py`: needs, drives, decay, mood, attachment, trust, loneliness,
+     frustration, forgiveness, recovery, bond level — pure and deterministic.
+   - `host/presence.py`: the away / present-but-ignoring / engaged state machine and
+     its host activity signals.
+   - `host/memory.py`: SQLite store, capture, salience scoring, bounded ranked
+     retrieval, durable records, forget/reset.
+   - `host/reflection.py`: periodic consolidation of repeated events into stable
+     facts and preferences, behind the guardrail above.
+   - `host/profile.py`: single-owner local profile, Mochi and learned-owner
+     preferences, forget/reset operations.
+
+   ### Testing
+
+   All body logic — needs decay, presence transitions, affect, salience, retrieval
+   ranking, consolidation, prompt construction, forget/reset — is deterministic and
+   tested with a **stubbed model and an injected clock**. The loop already injects
+   `generate` and `sleep`; add an injectable time source so wall-clock decay and
+   "ignored" timing are testable without real waiting.
+
+   ### Acceptance for Phase 9
+
+   - Mochi's needs decay in real time and recover through owner action.
+   - Mochi distinguishes *away* from *present-but-ignoring* and reacts differently.
+   - Mochi remembers meaningful interactions across host restarts.
+   - each model call gets only a bounded, relevant memory context.
+   - repeated owner behavior changes relationship state in a testable way.
+   - Mochi can become sad, needy, worried, grumpy, or (grounded) jealous for
+     understandable reasons, always bounded, recoverable, and never manipulative.
+   - Mochi surprises the owner: novelty, spontaneous callbacks, and rare special
+     moments are observable over a session.
+   - rare remembered text references work without turning Mochi into a chatbot.
+   - memory is fully local with working inspect/forget/reset/disable controls, a
+     versioned schema, and thread-safe access.
+   - the device firmware and wire protocol are unchanged for this phase.
+
+10. **Device → host uplink + cube "boop" (first physical input)** — optional
+    hardware expansion; deliberately revisits the V1 one-way rule.
+
+    The single biggest change for *any* on-device input: today the wire protocol is
+    **one-way (host → device)** — the device only receives behavior frames and never
+    transmits. A physical sensor requires a small **device → host uplink**.
+
+    - keep the existing downlink `behavior` frame exactly as-is.
+    - add one new versioned uplink message family on the *same* single TCP
+      connection (AGENTS.md: one transport, one connection), e.g.
+      `{"v":1,"kind":"input","source":"touch","value":1,"ms":1234}`.
+    - the host reads uplink frames and feeds them into the same input queue that
+      `/message`, `/build`, `/test`, and `/alert` already use, so Phase 9's brain
+      handles them with no special casing.
+    - firmware stays bounded: fixed buffers, debounced, rate-limited; malformed
+      uplink never blocks rendering.
+
+    First sensor — a cube **"boop"/touch**: petting Mochi replenishes
+    `social`/`affection` and triggers happy/play in character. It is the
+    highest-delight, lowest-data physical input. Hardware note: the **ESP32-C3 has no
+    capacitive-touch peripheral** (only ESP32 / S2 / S3 do), so touch means an
+    external touch IC (TTP223, or MPR121 over I2C) or a simple cap-pad/button on a
+    GPIO.
+
+11. **Richer sensing & embodiment (incl. the voice question)** — optional, later;
+    ordered by value-to-cost.
+
+    Most of these need only the Phase 10 uplink; a couple force a hardware rethink.
+
+    - **ambient light (I2C, e.g. BH1750/VEML7700):** day/night awareness and "lights
+      off → go to sleep." Cheap, tiny data, large life-like payoff.
+    - **presence (PIR) and/or accelerometer (I2C):** "you left the room"; "don't
+      shake the cube." Cheap and fun.
+    - **voice — keep two things separate:**
+      - *voice input:* prefer the **host computer's own microphone + speech-to-text**
+        (push-to-talk or a host-side wake word). This needs **no device hardware**,
+        keeps the C3 free, and fits "the computer is the brain." An on-*device* mic
+        (I2S) with streaming or wake-word is far heavier and stays out of scope per
+        AGENTS.md.
+      - *sound output:* a tiny speaker/buzzer for borks/boops is delightful but adds
+        BOM and conflicts with the current "no on-device audio" rule — make it a
+        deliberate, separate decision.
+    - **MCU note:** light / PIR / touch-IC / accelerometer all fit the ESP32-C3 over
+      GPIO/I2C with the Phase 10 uplink. **On-device audio (mic or speaker) is the
+      realistic trigger to move to ESP32-S3** (more RAM/CPU, and S3 also brings native
+      capacitive touch). Until audio actually lives on the device, the C3 stays fine.
+
+    Guardrail: every physical input still flows through the host brain. The device
+    senses and renders; it never decides. This preserves "the host is the brain."
 
 ## Acceptance for V1
 
@@ -397,3 +537,7 @@ V1 is successful when:
 - on-device audio
 - on-device model inference
 - broad V2 architecture design before the pet is already fun
+
+These exclusions are intentional for V1. Phases 10–11 above revisit on-device
+inputs (a device→host uplink, cube touch, light/presence/motion) and the voice
+question deliberately, after the host-only Phase 9 brain proves the pet is fun.
