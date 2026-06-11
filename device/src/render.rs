@@ -1,14 +1,19 @@
 //! Mochi's local idle animation.
 //!
 //! Phase 2 implements the single idle behaviour from `PET.md`: a calm, breathing
-//! Shiba face that blinks now and then so it still feels alive with no host
-//! attached. Everything here is integer / fixed-point — there are no floats, and
-//! motion comes from a small sine lookup table, which keeps the renderer cheap
-//! and deterministic on the FPU-less ESP32-C3.
+//! Shiba that blinks now and then so it still feels alive with no host attached.
+//! Mochi is drawn as a full sitting Shiba Inu — orange fur, white chest and
+//! paws, pink inner ears and blush, a curled tail, and a happy face — so the
+//! silhouette reads instantly through the cube. Everything here is integer /
+//! fixed-point: there are no floats, and motion comes from a small sine lookup
+//! table, which keeps the renderer cheap and deterministic on the FPU-less
+//! ESP32-C3.
 
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
-use embedded_graphics::primitives::{Circle, Line, PrimitiveStyle, Triangle};
+use embedded_graphics::primitives::{
+    Circle, Ellipse, Line, PrimitiveStyle, Rectangle, RoundedRectangle, Triangle,
+};
 
 /// `sin(2*pi * i / 64) * 1024`, integer-only motion source.
 const SIN: [i16; 64] = [
@@ -28,9 +33,14 @@ const BLINK_PERIOD: u32 = 110;
 const BLINK_LEN: u32 = 4;
 
 // Mochi's palette. Bright, warm fur on a black field reads well as a hologram.
-const ORANGE: Rgb565 = Rgb565::new(28, 30, 5);
-const CREAM: Rgb565 = Rgb565::new(30, 57, 25);
-const INK: Rgb565 = Rgb565::new(2, 3, 1);
+// Navy is only ever drawn on top of a lighter fill (eyes, nose, toe lines), so
+// it never disappears into the black background.
+const ORANGE: Rgb565 = Rgb565::new(30, 37, 7);
+const ORANGE_DK: Rgb565 = Rgb565::new(23, 28, 5);
+const CREAM: Rgb565 = Rgb565::new(31, 61, 28);
+const PINK: Rgb565 = Rgb565::new(31, 34, 19);
+const BLUSH: Rgb565 = Rgb565::new(31, 44, 23);
+const NAVY: Rgb565 = Rgb565::new(3, 7, 12);
 const SHINE: Rgb565 = Rgb565::new(31, 63, 31);
 
 /// Mochi's idle scene state. Just a frame counter for now.
@@ -67,65 +77,146 @@ impl Scene {
         let ox = (SIN[(idx + 16) % 64] as i32 * SWAY_AMPL) / 1024;
         let blinking = self.frame % BLINK_PERIOD < BLINK_LEN;
 
-        // Ears (drawn first so the head overlaps their base).
+        // --- Body (drawn first, the head sits on top of it) ---
+
+        // Curled tail peeking out on Mochi's left (viewer's right).
+        fill_circle(target, 103 + ox, 88 + oy, 30, ORANGE)?;
+        stroke_circle(target, 105 + ox, 90 + oy, 15, ORANGE_DK, 3)?;
+        fill_circle(target, 105 + ox, 90 + oy, 6, CREAM)?;
+
+        // Seated haunches.
+        fill_circle(target, 64 + ox, 100 + oy, 76, ORANGE)?;
+
+        // White chest/belly flowing down into the front paws.
+        fill_ellipse(target, 64 + ox, 102 + oy, 48, 54, CREAM)?;
+        fill_round_rect(target, 45 + ox, 96 + oy, 17, 34, 8, CREAM)?;
+        fill_round_rect(target, 66 + ox, 96 + oy, 17, 34, 8, CREAM)?;
+        // Gap + toe creases so the two front paws read as paws.
+        stroke_line(
+            target,
+            pt(64, 112, ox, oy),
+            pt(64, 128, ox, oy),
+            2,
+            ORANGE_DK,
+        )?;
+        stroke_line(
+            target,
+            pt(50, 122, ox, oy),
+            pt(50, 128, ox, oy),
+            2,
+            ORANGE_DK,
+        )?;
+        stroke_line(
+            target,
+            pt(57, 122, ox, oy),
+            pt(57, 128, ox, oy),
+            2,
+            ORANGE_DK,
+        )?;
+        stroke_line(
+            target,
+            pt(72, 122, ox, oy),
+            pt(72, 128, ox, oy),
+            2,
+            ORANGE_DK,
+        )?;
+        stroke_line(
+            target,
+            pt(79, 122, ox, oy),
+            pt(79, 128, ox, oy),
+            2,
+            ORANGE_DK,
+        )?;
+
+        // --- Head ---
+
+        // Orange dome.
+        fill_circle(target, 64 + ox, 47 + oy, 66, ORANGE)?;
+
+        // Ears: a broad orange outer triangle with a pink inner triangle, sitting
+        // on top of the head so the pink stays visible. Mostly upright with a
+        // slight outward lean, like the reference.
         fill_triangle(
             target,
-            pt(30, 44, ox, oy),
-            pt(44, 8, ox, oy),
-            pt(62, 40, ox, oy),
+            pt(56, 33, ox, oy),
+            pt(35, 5, ox, oy),
+            pt(30, 41, ox, oy),
             ORANGE,
         )?;
         fill_triangle(
             target,
-            pt(98, 44, ox, oy),
-            pt(84, 8, ox, oy),
-            pt(66, 40, ox, oy),
+            pt(72, 33, ox, oy),
+            pt(93, 5, ox, oy),
+            pt(98, 41, ox, oy),
             ORANGE,
         )?;
         fill_triangle(
             target,
-            pt(40, 38, ox, oy),
-            pt(46, 18, ox, oy),
-            pt(56, 36, ox, oy),
-            CREAM,
+            pt(51, 33, ox, oy),
+            pt(39, 19, ox, oy),
+            pt(38, 38, ox, oy),
+            PINK,
         )?;
         fill_triangle(
             target,
-            pt(88, 38, ox, oy),
-            pt(82, 18, ox, oy),
-            pt(72, 36, ox, oy),
-            CREAM,
+            pt(77, 33, ox, oy),
+            pt(89, 19, ox, oy),
+            pt(90, 38, ox, oy),
+            PINK,
         )?;
 
-        // Head, then the cream lower-face mask.
-        fill_circle(target, 64 + ox, 60 + oy, 84, ORANGE)?;
-        fill_circle(target, 64 + ox, 78 + oy, 64, CREAM)?;
+        // White muzzle, kept fairly central so the orange cheeks still bulge out
+        // to the sides of the face.
+        fill_ellipse(target, 64 + ox, 67 + oy, 50, 40, CREAM)?;
 
-        // Shiba eyebrow dots on the orange forehead.
-        fill_circle(target, 46 + ox, 44 + oy, 9, CREAM)?;
-        fill_circle(target, 82 + ox, 44 + oy, 9, CREAM)?;
+        // Shiba brow spots on the orange forehead.
+        fill_circle(target, 50 + ox, 33 + oy, 7, CREAM)?;
+        fill_circle(target, 78 + ox, 33 + oy, 7, CREAM)?;
 
-        // Eyes: open with a catchlight, or a shut eyelid line while blinking.
+        // Blush cheeks, low and to the sides.
+        fill_ellipse(target, 46 + ox, 70 + oy, 14, 9, BLUSH)?;
+        fill_ellipse(target, 82 + ox, 70 + oy, 14, 9, BLUSH)?;
+
+        // Eyes: big and round with a catchlight, or a shut eyelid line on a blink.
+        let (lx, rx, ey) = (52, 76, 52);
         if blinking {
-            stroke_line(target, pt(44, 58, ox, oy), pt(56, 58, ox, oy), 3, INK)?;
-            stroke_line(target, pt(72, 58, ox, oy), pt(84, 58, ox, oy), 3, INK)?;
+            stroke_line(
+                target,
+                pt(lx - 8, ey, ox, oy),
+                pt(lx + 8, ey, ox, oy),
+                3,
+                NAVY,
+            )?;
+            stroke_line(
+                target,
+                pt(rx - 8, ey, ox, oy),
+                pt(rx + 8, ey, ox, oy),
+                3,
+                NAVY,
+            )?;
         } else {
-            fill_circle(target, 50 + ox, 58 + oy, 13, INK)?;
-            fill_circle(target, 78 + ox, 58 + oy, 13, INK)?;
-            fill_circle(target, 48 + ox, 56 + oy, 4, SHINE)?;
-            fill_circle(target, 76 + ox, 56 + oy, 4, SHINE)?;
+            fill_circle(target, lx + ox, ey + oy, 16, NAVY)?;
+            fill_circle(target, rx + ox, ey + oy, 16, NAVY)?;
+            fill_circle(target, lx - 3 + ox, ey - 4 + oy, 6, SHINE)?;
+            fill_circle(target, rx - 3 + ox, ey - 4 + oy, 6, SHINE)?;
+            fill_circle(target, lx + 4 + ox, ey + 4 + oy, 3, SHINE)?;
+            fill_circle(target, rx + 4 + ox, ey + 4 + oy, 3, SHINE)?;
         }
 
-        // Nose and the little smile.
+        // Nose and a happy upturned mouth.
         fill_triangle(
             target,
-            pt(57, 70, ox, oy),
-            pt(71, 70, ox, oy),
-            pt(64, 82, ox, oy),
-            INK,
+            pt(58, 62, ox, oy),
+            pt(70, 62, ox, oy),
+            pt(64, 71, ox, oy),
+            NAVY,
         )?;
-        stroke_line(target, pt(64, 82, ox, oy), pt(54, 90, ox, oy), 2, INK)?;
-        stroke_line(target, pt(64, 82, ox, oy), pt(74, 90, ox, oy), 2, INK)?;
+        fill_circle(target, 61 + ox, 64 + oy, 3, SHINE)?;
+        stroke_line(target, pt(64, 71, ox, oy), pt(64, 76, ox, oy), 2, NAVY)?;
+        stroke_line(target, pt(64, 76, ox, oy), pt(57, 79, ox, oy), 2, NAVY)?;
+        stroke_line(target, pt(57, 79, ox, oy), pt(53, 75, ox, oy), 2, NAVY)?;
+        stroke_line(target, pt(64, 76, ox, oy), pt(71, 79, ox, oy), 2, NAVY)?;
+        stroke_line(target, pt(71, 79, ox, oy), pt(75, 75, ox, oy), 2, NAVY)?;
 
         Ok(())
     }
@@ -145,6 +236,60 @@ where
     Circle::new(top_left, dia as u32)
         .into_styled(PrimitiveStyle::with_fill(color))
         .draw(target)
+}
+
+fn stroke_circle<D>(
+    target: &mut D,
+    cx: i32,
+    cy: i32,
+    dia: i32,
+    color: Rgb565,
+    width: u32,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb565>,
+{
+    let top_left = Point::new(cx - dia / 2, cy - dia / 2);
+    Circle::new(top_left, dia as u32)
+        .into_styled(PrimitiveStyle::with_stroke(color, width))
+        .draw(target)
+}
+
+fn fill_ellipse<D>(
+    target: &mut D,
+    cx: i32,
+    cy: i32,
+    w: i32,
+    h: i32,
+    color: Rgb565,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb565>,
+{
+    let top_left = Point::new(cx - w / 2, cy - h / 2);
+    Ellipse::new(top_left, Size::new(w as u32, h as u32))
+        .into_styled(PrimitiveStyle::with_fill(color))
+        .draw(target)
+}
+
+fn fill_round_rect<D>(
+    target: &mut D,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    r: i32,
+    color: Rgb565,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = Rgb565>,
+{
+    RoundedRectangle::with_equal_corners(
+        Rectangle::new(Point::new(x, y), Size::new(w as u32, h as u32)),
+        Size::new(r as u32, r as u32),
+    )
+    .into_styled(PrimitiveStyle::with_fill(color))
+    .draw(target)
 }
 
 fn fill_triangle<D>(
