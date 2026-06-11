@@ -197,12 +197,12 @@ The first useful animation set is enough:
    - orientation and mirror correction → single explicit `Orientation` re-map path; `Orientation::CUBE` for the dichroic cube (flags tunable at bring-up).
    - one idle animation → `device/src/render.rs`: Mochi `idle` with integer breathing + occasional `blink`.
 
-3. **Bring up Wi-Fi**
+3. **Bring up Wi-Fi** — done; firmware has local TCP behavior transport.
    - join network
    - reconnect cleanly
    - prove the device can receive a behavior update over Wi-Fi
 
-4. **Build the smallest host service**
+4. **Build the smallest host service** — done; Python host sends validated behavior updates.
    - one Python process
    - one LLM call path
    - one behavior message sent to the device
