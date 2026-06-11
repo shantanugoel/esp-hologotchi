@@ -52,10 +52,7 @@ class BehaviorCommand:
 
 
 def parse_behavior_response(response_text: str) -> BehaviorCommand:
-    try:
-        raw = json.loads(response_text)
-    except json.JSONDecodeError as exc:
-        raise ValidationError(f"model output was not valid JSON: {exc}") from exc
+    raw = _load_behavior_object(response_text)
 
     if not isinstance(raw, dict):
         raise ValidationError("model output must be a single JSON object")
@@ -127,3 +124,23 @@ def _require_string(raw: dict[str, object], field: str) -> str:
     if not isinstance(value, str):
         raise ValidationError(f"{field} must be a string")
     return value
+
+
+def _load_behavior_object(response_text: str) -> object:
+    try:
+        return json.loads(response_text)
+    except json.JSONDecodeError as exact_exc:
+        decoder = json.JSONDecoder()
+        for index, char in enumerate(response_text):
+            if char != "{":
+                continue
+            try:
+                raw, _ = decoder.raw_decode(response_text, index)
+            except json.JSONDecodeError:
+                continue
+            return raw
+        if response_text.strip():
+            raise ValidationError(
+                f"model output did not contain a JSON object: {exact_exc}"
+            ) from exact_exc
+        raise ValidationError("model output was empty") from exact_exc
