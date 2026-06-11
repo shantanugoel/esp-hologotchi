@@ -12,6 +12,8 @@ from .transport import BehaviorClient, DeviceEndpoint, TransportError
 
 GenerateBehavior = Callable[[str, OllamaConfig], BehaviorCommand]
 SleepFn = Callable[[float], None]
+IDLE_CAPABLE_ANIMATIONS = frozenset({"idle", "blink", "look_around"})
+IDLE_LOOP_DURATION_MS = 3000
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,7 @@ def run_pet_loop(
             except OllamaError as exc:
                 print(f"model unavailable: {exc}", file=err, flush=True)
                 behavior = _fallback_behavior()
+            behavior = _adapt_loop_behavior(behavior, loop_config)
 
             if client is not None:
                 try:
@@ -92,4 +95,24 @@ def _fallback_behavior() -> BehaviorCommand:
         text=None,
         alert=False,
         duration_ms=5000,
+    )
+
+
+def _adapt_loop_behavior(
+    behavior: BehaviorCommand, loop_config: PetLoopConfig
+) -> BehaviorCommand:
+    if behavior.animation not in IDLE_CAPABLE_ANIMATIONS:
+        return behavior
+
+    loop_gap_ms = max(1000, int(loop_config.interval_seconds * 1000) // 2)
+    duration_ms = min(behavior.duration_ms, IDLE_LOOP_DURATION_MS, loop_gap_ms)
+    if duration_ms == behavior.duration_ms:
+        return behavior
+
+    return BehaviorCommand(
+        mood=behavior.mood,
+        animation=behavior.animation,
+        text=behavior.text,
+        alert=behavior.alert,
+        duration_ms=duration_ms,
     )

@@ -82,7 +82,11 @@ def build_stateful_prompt(state: PetState, event: str) -> str:
     return (
         f"{state.prompt_context()}\n\n"
         f"Current moment:\n{cleaned}\n\n"
-        "Choose Mochi's next behavior for the next few seconds."
+        "Choose Mochi's next behavior for the next few seconds.\n"
+        "Quiet desk time should still feel alive: vary between idle, blink, "
+        "and look_around instead of choosing idle every cycle. Use sleepy only "
+        "when Mochi is drowsy, and reserve happy, worried, and alert for clear "
+        "events."
     )
 
 

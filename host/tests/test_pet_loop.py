@@ -54,6 +54,8 @@ class PetLoopTests(unittest.TestCase):
         self.assertIn("last_event: the build passed", prompts[1])
         self.assertEqual(state.mood, "calm")
         self.assertEqual(output.getvalue().count("\n"), 2)
+        self.assertIn('"animation":"idle"', output.getvalue())
+        self.assertIn('"duration_ms":1000', output.getvalue())
 
     def test_loop_continues_with_idle_fallback_after_model_error(self) -> None:
         prompts: list[str] = []
