@@ -33,10 +33,19 @@ class ProtocolValidationTests(unittest.TestCase):
         self.assertEqual(behavior.animation, "happy")
         self.assertEqual(behavior.text, "build passed")
 
-    def test_rejects_mood_animation_mismatch(self) -> None:
-        with self.assertRaisesRegex(ValidationError, "must use mood"):
+    def test_canonicalizes_mood_animation_mismatch(self) -> None:
+        behavior = parse_behavior_response(
+            '{"v":1,"kind":"behavior","mood":"sleepy","animation":"blink","text":"zzz","alert":false,"duration_ms":3000}'
+        )
+
+        self.assertEqual(behavior.mood, "calm")
+        self.assertEqual(behavior.animation, "blink")
+        self.assertEqual(behavior.text, "zzz")
+
+    def test_rejects_unknown_mood(self) -> None:
+        with self.assertRaisesRegex(ValidationError, "unknown mood"):
             parse_behavior_response(
-                '{"v":1,"kind":"behavior","mood":"curious","animation":"happy","text":"","alert":false,"duration_ms":3000}'
+                '{"v":1,"kind":"behavior","mood":"drowsy","animation":"blink","text":"","alert":false,"duration_ms":3000}'
             )
 
     def test_rejects_non_ascii_text(self) -> None:

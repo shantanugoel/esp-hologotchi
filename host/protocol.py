@@ -19,6 +19,7 @@ ANIMATION_TO_MOOD: Final[dict[str, str]] = {
     "worried": "worried",
     "alert": "alert",
 }
+ALLOWED_MOODS: Final[frozenset[str]] = frozenset(ANIMATION_TO_MOOD.values())
 ALLOWED_FIELDS: Final[frozenset[str]] = frozenset(
     {"v", "kind", "mood", "animation", "text", "alert", "duration_ms"}
 )
@@ -74,11 +75,10 @@ def parse_behavior_response(response_text: str) -> BehaviorCommand:
         raise ValidationError(f"unknown animation {animation!r}")
 
     mood = _require_string(raw, "mood")
+    if mood not in ALLOWED_MOODS:
+        raise ValidationError(f"unknown mood {mood!r}")
     expected_mood = ANIMATION_TO_MOOD[animation]
-    if mood != expected_mood:
-        raise ValidationError(
-            f"animation {animation!r} must use mood {expected_mood!r}, got {mood!r}"
-        )
+    mood = expected_mood
 
     alert = raw.get("alert")
     if not isinstance(alert, bool):
