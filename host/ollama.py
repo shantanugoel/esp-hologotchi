@@ -43,6 +43,12 @@ def generate_behavior(user_prompt: str, config: OllamaConfig) -> BehaviorCommand
     try:
         with request.urlopen(req, timeout=config.timeout_seconds) as response:
             raw_response = response.read()
+    except error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace").strip()
+        suffix = f": {details}" if details else ""
+        raise OllamaError(
+            f"Ollama request failed at {config.base_url}: HTTP {exc.code} {exc.reason}{suffix}"
+        ) from exc
     except error.URLError as exc:
         raise OllamaError(f"failed to reach Ollama at {config.base_url}: {exc}") from exc
 
