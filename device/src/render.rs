@@ -2,9 +2,9 @@
 //!
 //! Phase 2 implements the single idle behaviour from `PET.md`: a calm, breathing
 //! Shiba that blinks now and then so it still feels alive with no host attached.
-//! Mochi is drawn as a full sitting Shiba Inu — orange fur, white chest and
-//! paws, pink inner ears and blush, a curled tail, and a happy face — so the
-//! silhouette reads instantly through the cube. Everything here is integer /
+//! Mochi is drawn as a full sitting Shiba Inu — red-gold fur, cream chest and
+//! paws, soft inner ears, a curled tail, and a happy face — so the silhouette
+//! reads instantly through the cube. Everything here is integer /
 //! fixed-point: there are no floats, and motion comes from a small sine lookup
 //! table, which keeps the renderer cheap and deterministic on the FPU-less
 //! ESP32-C3.
@@ -32,14 +32,15 @@ const BLINK_PERIOD: u32 = 110;
 /// How many frames an eye stays shut (~0.2 s at 20 fps).
 const BLINK_LEN: u32 = 4;
 
-// Mochi's palette. Bright, warm fur on a black field reads well as a hologram.
-// Navy is only ever drawn on top of a lighter fill (eyes, nose, toe lines), so
-// it never disappears into the black background.
-const ORANGE: Rgb565 = Rgb565::new(30, 37, 7);
-const ORANGE_DK: Rgb565 = Rgb565::new(23, 28, 5);
-const CREAM: Rgb565 = Rgb565::new(31, 61, 28);
-const PINK: Rgb565 = Rgb565::new(31, 34, 19);
-const BLUSH: Rgb565 = Rgb565::new(31, 44, 23);
+// Mochi's palette aims for a more natural red Shiba coat while keeping enough
+// contrast to read clearly against the black hologram background. Navy is only
+// ever drawn on top of a lighter fill (eyes, nose, toe lines), so it never
+// disappears into the black background.
+const ORANGE: Rgb565 = Rgb565::new(25, 31, 7);
+const ORANGE_DK: Rgb565 = Rgb565::new(19, 22, 4);
+const CREAM: Rgb565 = Rgb565::new(29, 56, 23);
+const PINK: Rgb565 = Rgb565::new(27, 43, 18);
+const BLUSH: Rgb565 = Rgb565::new(29, 39, 17);
 const NAVY: Rgb565 = Rgb565::new(3, 7, 12);
 const SHINE: Rgb565 = Rgb565::new(31, 63, 31);
 
@@ -130,38 +131,41 @@ impl Scene {
 
         // --- Head ---
 
-        // Orange dome.
+        // Ears: draw the outer fur first so the head can overlap the base and
+        // keep the silhouette tucked in. The triangles are also shorter and a
+        // bit broader so they read as softer, cuter Shiba ears.
+        fill_triangle(
+            target,
+            pt(57, 31, ox, oy),
+            pt(41, 9, ox, oy),
+            pt(35, 37, ox, oy),
+            ORANGE,
+        )?;
+        fill_triangle(
+            target,
+            pt(71, 31, ox, oy),
+            pt(87, 9, ox, oy),
+            pt(93, 37, ox, oy),
+            ORANGE,
+        )?;
+
+        // Orange dome overlapping the ear bases.
         fill_circle(target, 64 + ox, 47 + oy, 66, ORANGE)?;
 
-        // Ears: a broad orange outer triangle with a pink inner triangle, sitting
-        // on top of the head so the pink stays visible. Mostly upright with a
-        // slight outward lean, like the reference.
+        // Inner ear triangles stay above the head so the soft peach tone
+        // remains visible without letting the base poke out of the silhouette.
         fill_triangle(
             target,
-            pt(56, 33, ox, oy),
-            pt(35, 5, ox, oy),
-            pt(30, 41, ox, oy),
-            ORANGE,
-        )?;
-        fill_triangle(
-            target,
-            pt(72, 33, ox, oy),
-            pt(93, 5, ox, oy),
-            pt(98, 41, ox, oy),
-            ORANGE,
-        )?;
-        fill_triangle(
-            target,
-            pt(51, 33, ox, oy),
-            pt(39, 19, ox, oy),
-            pt(38, 38, ox, oy),
+            pt(53, 30, ox, oy),
+            pt(46, 19, ox, oy),
+            pt(44, 34, ox, oy),
             PINK,
         )?;
         fill_triangle(
             target,
-            pt(77, 33, ox, oy),
-            pt(89, 19, ox, oy),
-            pt(90, 38, ox, oy),
+            pt(75, 30, ox, oy),
+            pt(82, 19, ox, oy),
+            pt(84, 34, ox, oy),
             PINK,
         )?;
 
@@ -173,9 +177,9 @@ impl Scene {
         fill_circle(target, 50 + ox, 33 + oy, 7, CREAM)?;
         fill_circle(target, 78 + ox, 33 + oy, 7, CREAM)?;
 
-        // Blush cheeks, low and to the sides.
-        fill_ellipse(target, 46 + ox, 70 + oy, 14, 9, BLUSH)?;
-        fill_ellipse(target, 82 + ox, 70 + oy, 14, 9, BLUSH)?;
+        // Subtle warm cheek shading, low and to the sides.
+        fill_ellipse(target, 46 + ox, 70 + oy, 12, 7, BLUSH)?;
+        fill_ellipse(target, 82 + ox, 70 + oy, 12, 7, BLUSH)?;
 
         // Eyes: big and round with a catchlight, or a shut eyelid line on a blink.
         let (lx, rx, ey) = (52, 76, 52);
