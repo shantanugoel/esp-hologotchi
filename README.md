@@ -142,6 +142,7 @@ Useful flags:
 - `--device-port 4242` — override the TCP port if you changed it on the device
 - `--ollama-url http://127.0.0.1:11434` — override the Ollama base URL
 - `--model-preset qwen3.5:2b` — use the lower-memory preset
+- `--ollama-keep-alive 30m` — ask Ollama to keep the model loaded between requests; use `-1` to keep it loaded indefinitely
 - `--dry-run` — print the validated JSON payload without sending it
 - `--loop` — keep in-memory pet state and send repeated behavior updates
 - `--interval-seconds 6` — control the loop cadence

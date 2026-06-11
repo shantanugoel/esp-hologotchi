@@ -58,6 +58,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="HTTP timeout for the Ollama request.",
     )
     parser.add_argument(
+        "--ollama-keep-alive",
+        default="30m",
+        help=(
+            "How long Ollama should keep the model loaded after each request. "
+            "Use -1 to keep it loaded indefinitely."
+        ),
+    )
+    parser.add_argument(
         "--connect-retries",
         type=int,
         default=5,
@@ -103,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         model_family=args.model_family,
         model_preset=args.model_preset,
         timeout_seconds=args.timeout_seconds,
+        keep_alive=args.ollama_keep_alive,
     )
     if not args.dry_run and not args.device_host:
         parser.error("--device-host is required unless --dry-run is set")

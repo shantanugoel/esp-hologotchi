@@ -18,16 +18,20 @@ class OllamaConfig:
     model_family: str = "qwen3.5"
     model_preset: str = "qwen3.5:4b"
     timeout_seconds: float = 30.0
+    keep_alive: str = "30m"
 
 
 def build_generate_request(user_prompt: str, config: OllamaConfig) -> dict[str, object]:
-    return {
+    payload = {
         "model": config.model_preset,
         "system": load_personality_prompt(),
         "prompt": build_situation_prompt(user_prompt),
         "stream": False,
         "format": "json",
     }
+    if config.keep_alive:
+        payload["keep_alive"] = config.keep_alive
+    return payload
 
 
 def generate_behavior(user_prompt: str, config: OllamaConfig) -> BehaviorCommand:
