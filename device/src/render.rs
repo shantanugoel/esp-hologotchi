@@ -7,7 +7,7 @@
 
 use crate::behavior::{Animation, BehaviorUpdate};
 use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_4X6;
+use embedded_graphics::mono_font::ascii::FONT_6X10;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::{
@@ -520,26 +520,101 @@ fn draw_bubble<D>(target: &mut D, text: &str, alert: bool) -> Result<(), D::Erro
 where
     D: DrawTarget<Color = Rgb565>,
 {
-    let char_count = text.chars().count() as i32;
-    let width = (char_count * 4 + 12).clamp(28, 118);
+    const MAX_LINE_CHARS: usize = 17;
+    const TEXT_W: i32 = 6;
+    const LINE_H: i32 = 10;
+    const PAD_X: i32 = 7;
+    const PAD_Y: i32 = 4;
+
+    let split = split_bubble_text(text, MAX_LINE_CHARS);
+    let line_count = if split.second.is_some() { 2 } else { 1 };
+    let longest = split.first.chars().count().max(
+        split
+            .second
+            .map(|line| line.chars().count())
+            .unwrap_or_default(),
+    ) as i32;
+    let width = (longest * TEXT_W + PAD_X * 2).clamp(36, 122);
+    let height = line_count * LINE_H + PAD_Y * 2;
     let bubble_x = (128 - width) / 2;
+    let bubble_y = 2;
     let stroke = if alert { ALERT } else { ORANGE };
     let style = PrimitiveStyleBuilder::new()
         .fill_color(CREAM)
         .stroke_color(stroke)
-        .stroke_width(1)
+        .stroke_width(2)
         .build();
     RoundedRectangle::with_equal_corners(
-        Rectangle::new(Point::new(bubble_x, 4), Size::new(width as u32, 12)),
-        Size::new(6, 6),
+        Rectangle::new(
+            Point::new(bubble_x, bubble_y),
+            Size::new(width as u32, height as u32),
+        ),
+        Size::new(8, 8),
     )
     .into_styled(style)
     .draw(target)?;
 
-    let text_style = MonoTextStyle::new(&FONT_4X6, NAVY);
-    Text::with_baseline(text, Point::new(bubble_x + 6, 7), text_style, Baseline::Top)
+    let text_style = MonoTextStyle::new(&FONT_6X10, NAVY);
+    let text_x = bubble_x + PAD_X;
+    let text_y = bubble_y + PAD_Y;
+    Text::with_baseline(
+        split.first,
+        Point::new(text_x, text_y),
+        text_style,
+        Baseline::Top,
+    )
+    .draw(target)
+    .map(|_| ())?;
+    if let Some(second) = split.second {
+        Text::with_baseline(
+            second,
+            Point::new(text_x, text_y + LINE_H),
+            text_style,
+            Baseline::Top,
+        )
         .draw(target)
-        .map(|_| ())
+        .map(|_| ())?;
+    }
+
+    Ok(())
+}
+
+struct BubbleText<'a> {
+    first: &'a str,
+    second: Option<&'a str>,
+}
+
+fn split_bubble_text(text: &str, max_line_chars: usize) -> BubbleText<'_> {
+    if text.chars().count() <= max_line_chars {
+        return BubbleText {
+            first: text,
+            second: None,
+        };
+    }
+
+    let mut split_at = None;
+    let mut byte_at_limit = text.len();
+    for (char_index, (byte_index, ch)) in text.char_indices().enumerate() {
+        if char_index == max_line_chars {
+            byte_at_limit = byte_index;
+            break;
+        }
+        if ch == ' ' {
+            split_at = Some(byte_index);
+        }
+    }
+
+    let split_at = split_at.unwrap_or(byte_at_limit);
+    let first = text[..split_at].trim_end();
+    let second = text[split_at..].trim_start();
+    BubbleText {
+        first,
+        second: if second.is_empty() {
+            None
+        } else {
+            Some(second)
+        },
+    }
 }
 
 fn draw_alert_border<D>(target: &mut D, frame: u32) -> Result<(), D::Error>
