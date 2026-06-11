@@ -24,14 +24,14 @@ const SIN: [i16; 64] = [
     -980, -946, -903, -851, -792, -724, -650, -569, -483, -392, -297, -200, -100,
 ];
 
-/// Frames between blinks during the local idle loop (~5.5 s at 20 fps).
-const BLINK_PERIOD: u32 = 110;
-/// How many frames an eye stays shut (~0.2 s at 20 fps).
-const BLINK_LEN: u32 = 4;
-/// A curious head-turn every ~18 seconds at 20 fps.
-const LOOK_PERIOD: u32 = 360;
-const LOOK_START: u32 = 220;
-const LOOK_LEN: u32 = 28;
+/// Frames between blinks during the local idle loop (~4.8 s at 20 fps).
+const BLINK_PERIOD: u32 = 96;
+/// How many frames an eye stays shut (~0.15 s at 20 fps).
+const BLINK_LEN: u32 = 3;
+/// A curious head-turn every ~14 seconds at 20 fps.
+const LOOK_PERIOD: u32 = 280;
+const LOOK_START: u32 = 150;
+const LOOK_LEN: u32 = 42;
 
 // Mochi's palette keeps enough contrast to read through the cube while preserving
 // the natural Shiba look locked in `PET.md`.
@@ -209,16 +209,20 @@ fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_aler
             };
         }
         Animation::LookAround => {
-            let glance = wave(anim_frame, 3, 0, 6);
+            let glance = wave(anim_frame, 2, 0, 7);
             pose.eye_shift = glance;
             pose.hx = glance / 2;
+            pose.hy = -1;
             pose.ear_drop = -2;
         }
         Animation::Happy => {
             pose.oy -= wave_abs(anim_frame, 4, 0, 4);
+            pose.hx = wave(anim_frame, 3, 8, 2);
+            pose.hy -= wave_abs(anim_frame, 4, 16, 2);
             pose.tail_x = wave(anim_frame, 5, 0, 7);
             pose.tail_y = -wave_abs(anim_frame, 5, 0, 3);
             pose.ear_drop = -4;
+            pose.eye_y = -1;
             pose.mouth = MouthStyle::Grin;
         }
         Animation::Sleepy => {
@@ -238,7 +242,9 @@ fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_aler
             };
         }
         Animation::Worried => {
-            pose.hy += 1;
+            pose.hx = wave(anim_frame, 6, 0, 1);
+            pose.hy += 2;
+            pose.oy += 1;
             pose.tail_x = -4;
             pose.tail_y = 2;
             pose.ear_drop = 9;
@@ -247,8 +253,11 @@ fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_aler
             pose.mouth = MouthStyle::Frown;
         }
         Animation::Alert => {
-            pose.oy -= wave_abs(anim_frame, 6, 0, 2);
+            pose.oy -= wave_abs(anim_frame, 7, 0, 3);
+            pose.hx = wave(anim_frame, 8, 0, 2);
+            pose.hy -= 2;
             pose.ear_drop = -7;
+            pose.eye_y = -1;
             pose.eye_style = EyeStyle::Alert;
             pose.mouth = MouthStyle::Yawn;
             pose.alert_border = true;

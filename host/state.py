@@ -84,11 +84,15 @@ def build_stateful_prompt(state: PetState, event: str) -> str:
         f"Current moment:\n{cleaned}\n\n"
         "Choose Mochi's next behavior for the next few seconds.\n"
         "Quiet desk time should still feel alive: vary between idle, blink, "
-        "and look_around instead of choosing idle every cycle. Use sleepy only "
-        "when Mochi is drowsy, and reserve happy, worried, and alert for clear "
-        "events. Treat passed build/test results as small wins, failed "
-        "build/test results as worried moments, and important alerts as alert "
-        "moments."
+        "and look_around instead of choosing idle every cycle, usually with "
+        "empty text. Use sleepy only when Mochi is drowsy or winding down. "
+        "Use happy for direct affection, praise, and passed build/test results. "
+        "Use worried for failed build/test results and confusing trouble. "
+        "Use alert only for important alerts that need the human to look now. "
+        "Keep text to one or two short ASCII words, and prefer no text for "
+        "idle-capable animations. Prefer duration_ms 2500-5000 for normal "
+        "reactions, 1000-2500 for blink/look_around, and 5000-9000 for sleepy "
+        "or alert."
     )
 
 

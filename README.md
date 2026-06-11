@@ -24,6 +24,7 @@ See:
 
 - [`PLAN.md`](PLAN.md) for the roadmap
 - [`PET.md`](PET.md) for Mochi's locked personality and behavior vocabulary
+- [`DEMO.md`](DEMO.md) for the first demo shot list and trigger commands
 
 ## Repository layout
 

@@ -17,8 +17,10 @@ class PetStateTests(unittest.TestCase):
         self.assertIn("last_event: build passed", prompt)
         self.assertIn("user is reading logs", prompt)
         self.assertIn("vary between idle, blink, and look_around", prompt)
-        self.assertIn("failed build/test results as worried moments", prompt)
-        self.assertIn("important alerts as alert moments", prompt)
+        self.assertIn("Use happy for direct affection", prompt)
+        self.assertIn("Use worried for failed build/test results", prompt)
+        self.assertIn("Use alert only for important alerts", prompt)
+        self.assertIn("Prefer duration_ms 2500-5000", prompt)
 
     def test_observe_updates_and_clamps_state(self) -> None:
         state = PetState(energy=98, attention=97, sleepiness=3)

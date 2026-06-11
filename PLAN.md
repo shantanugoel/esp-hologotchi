@@ -220,10 +220,12 @@ The first useful animation set is enough:
    - build/test result → `POST /build` and `POST /test` while the host loop is served
    - one important alert path → `POST /alert` while the host loop is served
 
-8. **Polish**
-   - tune prompt/personality
-   - tune animation timing
-   - film the first demo
+8. **Polish** — done; prompt, renderer timing, and demo flow are ready for first footage.
+   - tune prompt/personality → tighter Mochi prompt in [PET.md](PET.md) and event
+     guidance in `host/state.py`
+   - tune animation timing → local idle cadence and pose timing in
+     `device/src/render.rs`
+   - film the first demo → shot list and trigger commands in [DEMO.md](DEMO.md)
 
 ## Acceptance for V1
 
