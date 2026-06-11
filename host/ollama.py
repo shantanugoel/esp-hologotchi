@@ -51,6 +51,11 @@ def generate_behavior(user_prompt: str, config: OllamaConfig) -> BehaviorCommand
         ) from exc
     except error.URLError as exc:
         raise OllamaError(f"failed to reach Ollama at {config.base_url}: {exc}") from exc
+    except TimeoutError as exc:
+        raise OllamaError(
+            f"Ollama request timed out at {config.base_url} after "
+            f"{config.timeout_seconds:g}s"
+        ) from exc
 
     try:
         parsed = json.loads(raw_response)

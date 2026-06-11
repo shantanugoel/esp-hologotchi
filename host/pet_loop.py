@@ -5,10 +5,10 @@ import time
 from dataclasses import dataclass
 from typing import Callable, TextIO
 
-from .ollama import OllamaConfig, generate_behavior
+from .ollama import OllamaConfig, OllamaError, generate_behavior
 from .protocol import BehaviorCommand
 from .state import PetState, build_stateful_prompt
-from .transport import BehaviorClient, DeviceEndpoint
+from .transport import BehaviorClient, DeviceEndpoint, TransportError
 
 GenerateBehavior = Callable[[str, OllamaConfig], BehaviorCommand]
 SleepFn = Callable[[float], None]
@@ -39,8 +39,10 @@ def run_pet_loop(
     generate: GenerateBehavior = generate_behavior,
     sleep: SleepFn = time.sleep,
     output: TextIO | None = None,
+    error_output: TextIO | None = None,
 ) -> PetState:
     out = output or sys.stdout
+    err = error_output or sys.stderr
     pet_state = state or PetState()
     event = loop_config.initial_event
     cycles = 0
@@ -49,10 +51,17 @@ def run_pet_loop(
     try:
         while loop_config.max_cycles is None or cycles < loop_config.max_cycles:
             prompt = build_stateful_prompt(pet_state, event)
-            behavior = generate(prompt, model_config)
+            try:
+                behavior = generate(prompt, model_config)
+            except OllamaError as exc:
+                print(f"model unavailable: {exc}", file=err, flush=True)
+                behavior = _fallback_behavior()
 
             if client is not None:
-                client.send(behavior)
+                try:
+                    client.send(behavior)
+                except TransportError as exc:
+                    print(f"device unavailable: {exc}", file=err, flush=True)
 
             pet_state.observe(behavior, event)
             print(behavior.to_json_line(), end="", file=out, flush=True)
@@ -74,3 +83,13 @@ def _require_endpoint(endpoint: DeviceEndpoint | None) -> DeviceEndpoint:
     if endpoint is None:
         raise ValueError("endpoint is required unless dry_run is enabled")
     return endpoint
+
+
+def _fallback_behavior() -> BehaviorCommand:
+    return BehaviorCommand(
+        mood="calm",
+        animation="idle",
+        text=None,
+        alert=False,
+        duration_ms=5000,
+    )

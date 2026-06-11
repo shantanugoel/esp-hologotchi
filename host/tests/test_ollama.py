@@ -4,8 +4,9 @@ import json
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest import mock
 
-from host.ollama import OllamaConfig, generate_behavior
+from host.ollama import OllamaConfig, OllamaError, generate_behavior
 
 
 class _OllamaHandler(BaseHTTPRequestHandler):
@@ -62,3 +63,15 @@ class OllamaTests(unittest.TestCase):
         self.assertFalse(request_body["stream"])
         self.assertIn("Mochi", request_body["system"])
         self.assertIn("the build just passed", request_body["prompt"])
+
+    def test_generate_behavior_wraps_socket_timeout(self) -> None:
+        config = OllamaConfig(
+            base_url="http://127.0.0.1:11434",
+            model_family="qwen3.5",
+            model_preset="qwen3.5:4b",
+            timeout_seconds=0.1,
+        )
+
+        with mock.patch("host.ollama.request.urlopen", side_effect=TimeoutError("timed out")):
+            with self.assertRaisesRegex(OllamaError, "timed out"):
+                generate_behavior("quiet desk time", config)
