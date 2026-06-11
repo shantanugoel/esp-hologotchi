@@ -207,10 +207,10 @@ The first useful animation set is enough:
    - one LLM call path
    - one behavior message sent to the device
 
-5. **Implement the pet loop**
-   - host keeps pet state
-   - host asks the model what the pet does next
-   - device animates the answer
+5. **Implement the pet loop** — done; host keeps short-lived state and can run continuously.
+   - host keeps pet state → `host/state.py`
+   - host asks the model what the pet does next → `host/pet_loop.py`
+   - device animates the answer → persistent TCP behavior stream drives existing renderer
 
 6. **Add direct interaction**
    - send the pet a message

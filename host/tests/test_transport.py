@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 from host.protocol import BehaviorCommand
-from host.transport import DeviceEndpoint, send_behavior
+from host.transport import BehaviorClient, DeviceEndpoint, send_behavior
 
 
 class _CaptureSocket:
@@ -104,3 +104,56 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(attempts, 3)
         self.assertEqual(sleep.call_count, 2)
         self.assertIn(b'"animation":"alert"', fake_socket.sent)
+
+    def test_behavior_client_reuses_connection_for_multiple_frames(self) -> None:
+        received: "queue.Queue[bytes]" = queue.Queue()
+        ready = threading.Event()
+
+        def serve_once() -> None:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+                server.bind(("127.0.0.1", 0))
+                server.listen(1)
+                received.put(str(server.getsockname()[1]).encode("ascii"))
+                ready.set()
+                conn, _ = server.accept()
+                with conn:
+                    payload = b""
+                    while payload.count(b"\n") < 2:
+                        chunk = conn.recv(1024)
+                        if not chunk:
+                            break
+                        payload += chunk
+                    received.put(payload)
+
+        thread = threading.Thread(target=serve_once, daemon=True)
+        thread.start()
+        ready.wait(timeout=2)
+
+        port = int(received.get_nowait().decode("ascii"))
+        endpoint = DeviceEndpoint(host="127.0.0.1", port=port, timeout_seconds=1.0)
+        with BehaviorClient(endpoint) as client:
+            client.send(
+                BehaviorCommand(
+                    mood="calm",
+                    animation="idle",
+                    text=None,
+                    alert=False,
+                    duration_ms=3000,
+                )
+            )
+            client.send(
+                BehaviorCommand(
+                    mood="curious",
+                    animation="look_around",
+                    text="sniff?",
+                    alert=False,
+                    duration_ms=3000,
+                )
+            )
+
+        payload = received.get(timeout=2).decode("ascii")
+        thread.join(timeout=2)
+
+        self.assertEqual(payload.count("\n"), 2)
+        self.assertIn('"animation":"idle"', payload)
+        self.assertIn('"animation":"look_around"', payload)

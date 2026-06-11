@@ -1,4 +1,4 @@
-"""Minimal host service for Phase 4."""
+"""Host service for Mochi's local pet loop."""
 
 from .protocol import BehaviorCommand
 
