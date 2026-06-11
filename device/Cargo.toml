@@ -12,6 +12,9 @@ path = "./src/bin/main.rs"
 esp-hal = { version = "~1.1.0", features = ["esp32c3", "log-04", "unstable"] }
 
 embedded-graphics = "0.8.2"
+heapless = "0.8.0"
+serde = { version = "1.0.228", default-features = false, features = ["derive"] }
+serde-json-core = "0.6.0"
 
 esp-rtos = { version = "0.3.0", features = [
   "embassy",
@@ -79,3 +82,7 @@ codegen-units = 1     # LLVM can perform better optimizations using a single thr
 debug         = 2     # prefer slower builds but better debugging experience
 lto           = 'fat'
 opt-level     = 's'
+
+[build-dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+toml = "0.8.23"

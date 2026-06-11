@@ -3,6 +3,7 @@
 /target/
 
 # Python host environment and caches
+/.venv/
 /host/.venv/
 /host/venv/
 /host/__pycache__/
@@ -11,9 +12,11 @@
 /host/.mypy_cache/
 /host/.coverage
 /host/htmlcov/
+/*.egg-info/
 *.py[cod]
 
 # Local config and secrets
+/device/hologotchi.local.toml
 *.local.*
 .env
 .env.*

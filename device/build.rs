@@ -1,7 +1,13 @@
+use std::fs;
+use std::path::PathBuf;
+
+use serde::Deserialize;
+
 fn main() {
     linker_be_nice();
     // make sure linkall.x is the last linker script (otherwise might cause problems with flip-link)
     println!("cargo:rustc-link-arg=-Tlinkall.x");
+    emit_local_device_config();
 }
 
 fn linker_be_nice() {
@@ -67,4 +73,66 @@ fn linker_be_nice() {
         "cargo:rustc-link-arg=--error-handling-script={}",
         std::env::current_exe().unwrap().display()
     );
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct LocalConfig {
+    wifi: Option<WifiConfig>,
+    control: Option<ControlConfig>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct WifiConfig {
+    ssid: Option<String>,
+    password: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ControlConfig {
+    port: Option<u16>,
+}
+
+fn emit_local_device_config() {
+    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let config_path = manifest_dir.join("hologotchi.local.toml");
+    println!("cargo:rerun-if-changed={}", config_path.display());
+
+    if !config_path.exists() {
+        return;
+    }
+
+    let raw = fs::read_to_string(&config_path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read device config from {}: {err}",
+            config_path.display()
+        )
+    });
+    let config: LocalConfig = toml::from_str(&raw).unwrap_or_else(|err| {
+        panic!(
+            "failed to parse device config {} as TOML: {err}",
+            config_path.display()
+        )
+    });
+
+    if let Some(wifi) = config.wifi {
+        if let Some(ssid) = wifi.ssid {
+            let ssid = ssid.trim();
+            if !ssid.is_empty() {
+                println!("cargo:rustc-env=HOLOGOTCHI_WIFI_SSID={ssid}");
+            }
+        }
+        if let Some(password) = wifi.password {
+            println!(
+                "cargo:rustc-env=HOLOGOTCHI_WIFI_PASSWORD={}",
+                password.trim()
+            );
+        }
+    }
+
+    if let Some(control) = config.control
+        && let Some(port) = control.port
+    {
+        assert!(port != 0, "control.port must be between 1 and 65535");
+        println!("cargo:rustc-env=HOLOGOTCHI_CONTROL_PORT={port}");
+    }
 }

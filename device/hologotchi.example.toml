@@ -1,0 +1,10 @@
+# Copy this file to `device/hologotchi.local.toml` for your machine-local,
+# non-checked-in firmware settings.
+
+[wifi]
+ssid = "your-wifi-name"
+password = "your-wifi-password"
+
+[control]
+# The ESP32 listens on this TCP port for newline-delimited behavior JSON.
+port = 4242

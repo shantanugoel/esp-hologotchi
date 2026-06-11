@@ -3,6 +3,9 @@ runner = "espflash flash --monitor --chip esp32c3"
 
 [env]
 ESP_LOG="info"
+# Device Wi-Fi/control settings live in `device/hologotchi.local.toml`.
+# Copy `device/hologotchi.example.toml` to that path and fill in your local
+# values before building/flashing.
 
 [build]
 rustflags = [
