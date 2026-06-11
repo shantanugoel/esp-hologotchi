@@ -145,8 +145,8 @@ async fn main(spawner: Spawner) -> ! {
         unreachable!("Wi-Fi connection loop never returns");
     } else {
         warn!(
-            "device/hologotchi.local.toml does not provide a Wi-Fi SSID; running local idle only. \
-             Copy device/hologotchi.example.toml to device/hologotchi.local.toml and fill in your \
+            "device/hologotchi.toml does not provide a Wi-Fi SSID; running local idle only. \
+             Copy device/hologotchi.example.toml to device/hologotchi.toml and fill in your \
              network details to enable Wi-Fi control."
         );
     }

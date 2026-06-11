@@ -94,7 +94,7 @@ struct ControlConfig {
 
 fn emit_local_device_config() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let config_path = manifest_dir.join("hologotchi.local.toml");
+    let config_path = manifest_dir.join("hologotchi.toml");
     println!("cargo:rerun-if-changed={}", config_path.display());
 
     if !config_path.exists() {

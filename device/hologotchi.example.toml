@@ -1,4 +1,4 @@
-# Copy this file to `device/hologotchi.local.toml` for your machine-local,
+# Copy this file to `device/hologotchi.toml` for your machine-local,
 # non-checked-in firmware settings.
 
 [wifi]
