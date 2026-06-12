@@ -11,7 +11,8 @@ from .inputs import HostInput, HostInputQueue
 from .memory import KIND_EPISODIC, MemoryStore
 from .ollama import OllamaConfig, OllamaError, generate_behavior
 from .presence import PresenceReport, PresenceSignals, PresenceTracker, SignalMailbox
-from .protocol import BehaviorCommand
+from .protocol import ANIMATION_TO_MOOD, BehaviorCommand
+from .reflection import consolidate_memory
 from .state import (
     MESSAGE_APOLOGY,
     MESSAGE_HARSH,
@@ -38,6 +39,10 @@ EFFECT_SOURCES = frozenset(
 # "ignored" timer). An alert being raised is not the same as the owner engaging.
 ENGAGEMENT_SOURCES = frozenset({"direct_message"})
 RETRIEVE_LIMIT = 3
+CALLBACK_MIN_SECONDS = 6 * 3600.0
+SELF_NUDGE_MIN_SECONDS = 30 * 60.0
+SELF_ALERT_IGNORED_SECONDS = 2 * 3600.0
+MILESTONE_TOTALS = frozenset({3, 10, 25, 50, 100})
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,12 @@ def run_pet_loop(
 
             if memory is not None:
                 _capture_memory(memory, event, report, pet_state.affect)
+                consolidate_memory(memory)
+
+            notes = _surprise_notes(pet_state, event, report, memory, now_ts)
+            if notes:
+                situation = f"{situation}\n" + "\n".join(notes)
+
             memories = _retrieve_memories(memory, situation)
 
             prompt = build_stateful_prompt(
@@ -137,6 +148,7 @@ def run_pet_loop(
                 else:
                     print(f"model unavailable: {exc}", file=err, flush=True)
                 behavior = _fallback_behavior(event)
+            behavior = _apply_novelty(behavior, pet_state, event)
             behavior = _adapt_loop_behavior(behavior, loop_config)
 
             if client is not None:
@@ -160,7 +172,8 @@ def run_pet_loop(
             if loop_config.max_cycles is not None and cycles >= loop_config.max_cycles:
                 break
 
-            pending = _next_event(loop_config, input_queue, sleep)
+            wait_seconds = _adaptive_interval(loop_config, report, event, behavior)
+            pending = _next_event(wait_seconds, input_queue, sleep)
     finally:
         if client is not None:
             client.close()
@@ -271,6 +284,160 @@ def _retrieve_memories(memory: MemoryStore | None, situation: str) -> tuple[str,
     return tuple(record.summary for record in records)
 
 
+def _surprise_notes(
+    state: PetState,
+    event: _LoopEvent,
+    report: PresenceReport,
+    memory: MemoryStore | None,
+    now: float,
+) -> list[str]:
+    notes: list[str] = []
+    special = _record_special_moment(state, event, now, memory)
+    if special is not None:
+        notes.append(f"Rare special moment: {special}")
+
+    if event.source == "idle":
+        nudge = _self_nudge_note(state, report, now)
+        if nudge is not None:
+            notes.append(nudge)
+
+        if memory is not None and now - state.last_callback_at >= CALLBACK_MIN_SECONDS:
+            callback = memory.spontaneous_callback(cooldown_seconds=0.0)
+            if callback is not None:
+                state.last_callback_at = now
+                notes.append(
+                    "Spontaneous callback memory: bring this up lightly if it fits: "
+                    f"{callback.summary}"
+                )
+    return notes
+
+
+def _record_special_moment(
+    state: PetState,
+    event: _LoopEvent,
+    now: float,
+    memory: MemoryStore | None,
+) -> str | None:
+    day_key = _local_day_key(now)
+    if event.source == "direct_message":
+        if state.last_interaction_day != day_key:
+            state.last_interaction_day = day_key
+            return "first direct interaction of the day; greet the owner like a small reunion."
+        return None
+
+    if event.source in {"build_result", "test_result"}:
+        if _is_failure(event.event):
+            state.failure_streak += 1
+            state.green_build_streak = 0
+            if state.failure_streak == 3:
+                return "third failure in a row; be worried but bounded and recoverable."
+            return None
+
+        state.failure_streak = 0
+        state.green_build_total += 1
+        state.green_build_streak += 1
+        total = _green_result_total(state, memory)
+        if total in MILESTONE_TOTALS or total % 100 == 0:
+            return f"{_ordinal(total)} green build/test result; celebrate an earned milestone."
+        if state.green_build_streak == 5:
+            return "five green results in a row; act proud and playful."
+        return None
+
+    if event.source == "idle":
+        hour = _local_hour(now)
+        if hour < 6:
+            key = f"{day_key}:late"
+            if state.last_daybeat_key != key:
+                state.last_daybeat_key = key
+                return "late-night desk beat; Mochi may get sleepy or gently dramatic."
+        if hour >= 22:
+            key = f"{day_key}:night"
+            if state.last_daybeat_key != key:
+                state.last_daybeat_key = key
+                return "night desk beat; Mochi may wind down toward sleep."
+    return None
+
+
+def _self_nudge_note(state: PetState, report: PresenceReport, now: float) -> str | None:
+    if now - state.last_self_nudge_at < SELF_NUDGE_MIN_SECONDS:
+        return None
+    affect = state.affect
+    if report.ignoring and report.ignored_seconds >= SELF_ALERT_IGNORED_SECONDS:
+        state.last_self_nudge_at = now
+        return (
+            "Self-made attention alert: the owner has been heads-down for about "
+            "two hours. Mochi may ask for attention once, gently, without guilt."
+        )
+    if report.away:
+        return None
+    if affect.social < 25 or affect.loneliness >= 55:
+        state.last_self_nudge_at = now
+        return "Self-initiated nudge: Mochi may ask for a tiny bit of attention."
+    if affect.play < 25 or affect.stimulation < 25:
+        state.last_self_nudge_at = now
+        return "Self-initiated nudge: Mochi may start a tiny game or patrol."
+    return None
+
+
+def _apply_novelty(
+    behavior: BehaviorCommand, state: PetState, event: _LoopEvent
+) -> BehaviorCommand:
+    text = behavior.text
+    if text is not None and text in state.recent_phrases:
+        text = None
+
+    if (
+        behavior.alert
+        or event.source == "important_alert"
+        or behavior.animation not in state.recent_animations
+    ):
+        if text == behavior.text:
+            return behavior
+        return BehaviorCommand(
+            mood=behavior.mood,
+            animation=behavior.animation,
+            text=text,
+            alert=behavior.alert,
+            duration_ms=behavior.duration_ms,
+        )
+
+    for animation in state.affect.suggested_animations():
+        if animation == "alert" or animation in state.recent_animations:
+            continue
+        if animation in IDLE_CAPABLE_ANIMATIONS:
+            text = None
+        return BehaviorCommand(
+            mood=ANIMATION_TO_MOOD[animation],
+            animation=animation,
+            text=text,
+            alert=False,
+            duration_ms=behavior.duration_ms,
+        )
+
+    if text == behavior.text:
+        return behavior
+    return BehaviorCommand(
+        mood=behavior.mood,
+        animation=behavior.animation,
+        text=text,
+        alert=behavior.alert,
+        duration_ms=behavior.duration_ms,
+    )
+
+
+def _green_result_total(state: PetState, memory: MemoryStore | None) -> int:
+    if memory is None:
+        return state.green_build_total
+    return max(state.green_build_total, memory.count_by(tag="pass"))
+
+
+def _ordinal(value: int) -> str:
+    suffix = "th"
+    if value % 100 not in {11, 12, 13}:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(value % 10, "th")
+    return f"{value}{suffix}"
+
+
 def _require_endpoint(endpoint: DeviceEndpoint | None) -> DeviceEndpoint:
     if endpoint is None:
         raise ValueError("endpoint is required unless dry_run is enabled")
@@ -297,21 +464,45 @@ def _fallback_behavior(event: _LoopEvent) -> BehaviorCommand:
 
 
 def _next_event(
-    loop_config: PetLoopConfig,
+    wait_seconds: float,
     input_queue: HostInputQueue | None,
     sleep: SleepFn,
 ) -> _LoopEvent | None:
     if input_queue is None:
-        sleep(loop_config.interval_seconds)
+        sleep(wait_seconds)
         return None
 
     item = input_queue.get_nowait()
     if item is not None:
         return _LoopEvent.from_input(item)
-    item = input_queue.wait(loop_config.interval_seconds)
+    item = input_queue.wait(wait_seconds)
     if item is not None:
         return _LoopEvent.from_input(item)
     return None
+
+
+def _adaptive_interval(
+    loop_config: PetLoopConfig,
+    report: PresenceReport,
+    event: _LoopEvent,
+    behavior: BehaviorCommand,
+) -> float:
+    base = loop_config.interval_seconds
+    if event.source != "idle":
+        return base
+    if report.away or behavior.animation in {"sleepy", "nap"}:
+        return min(60.0, max(base, base * 4.0, behavior.duration_ms / 1000.0))
+    if report.ignoring or behavior.animation in {"play", "excited", "alert"}:
+        return max(2.0, base * 0.5)
+    return base
+
+
+def _local_day_key(now: float) -> str:
+    return time.strftime("%Y-%m-%d", time.localtime(now))
+
+
+def _local_hour(now: float) -> int:
+    return int(time.strftime("%H", time.localtime(now)))
 
 
 def _log_loop_error(output: TextIO, event: _LoopEvent, message: str) -> None:

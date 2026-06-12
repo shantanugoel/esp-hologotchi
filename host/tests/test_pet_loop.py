@@ -427,6 +427,177 @@ class PetLoopMemoryTests(unittest.TestCase):
         self.assertGreater(restored.affect.affection, 70.0)
 
 
+class PetLoopSurpriseTests(unittest.TestCase):
+    def test_repeated_animation_and_phrase_are_rewritten_when_alternative_fits(self) -> None:
+        from host.affect import Affect
+        from host.pet_loop import run_pet_loop as _run
+        from host.state import PetState
+
+        prompts: list[str] = []
+
+        def fake_generate(prompt: str, config: object) -> BehaviorCommand:
+            del config
+            prompts.append(prompt)
+            return BehaviorCommand(
+                mood="happy", animation="happy", text="again",
+                alert=False, duration_ms=3000,
+            )
+
+        state = PetState(
+            affect=Affect(
+                social=80, play=80, stimulation=80, energy=80,
+                loneliness=5, frustration=5,
+            ),
+            recent_phrases=("again",),
+            recent_animations=("happy",),
+        )
+        output = io.StringIO()
+
+        _run(
+            PetLoopConfig(max_cycles=1, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=state,
+            generate=fake_generate,
+            output=output,
+        )
+
+        payload = output.getvalue()
+        self.assertIn("Recent animations: happy", prompts[0])
+        self.assertNotIn('"animation":"happy"', payload)
+        self.assertIn('"text":""', payload)
+
+    def test_spontaneous_callback_adds_old_memory_to_idle_prompt(self) -> None:
+        from host.memory import MemoryStore
+        from host.pet_loop import run_pet_loop as _run
+        from host.state import PetState
+
+        class Clock:
+            value = 1000.0
+
+            def __call__(self) -> float:
+                return self.value
+
+        clock = Clock()
+        memory = MemoryStore(now=clock)
+        self.addCleanup(memory.close)
+        memory.capture(
+            "direct_message",
+            "owner said good pup after a hard bug",
+            valence=70,
+            intensity=70,
+            owner_initiated=True,
+            tags=["praise"],
+        )
+        clock.value += 2 * 24 * 3600
+        prompts: list[str] = []
+
+        _run(
+            PetLoopConfig(interval_seconds=1.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=PetState(),
+            generate=_idle_generator(prompts),
+            sleep=lambda _: None,
+            now=clock,
+            memory=memory,
+            output=io.StringIO(),
+        )
+
+        self.assertIn("Spontaneous callback memory", prompts[1])
+        self.assertIn("good pup", prompts[1])
+
+    def test_green_result_milestone_is_added_to_prompt(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+        from host.state import PetState
+
+        inputs = HostInputQueue()
+        inputs.submit_build_test_result("build", True)
+        state = PetState(green_build_total=99)
+        prompts: list[str] = []
+
+        _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=state,
+            generate=_idle_generator(prompts),
+            input_queue=inputs,
+            output=io.StringIO(),
+        )
+
+        self.assertIn("100th green build/test result", prompts[1])
+
+    def test_self_made_attention_nudge_is_added_when_ignored_for_hours(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+        from host.presence import PresenceConfig, PresenceSignals, PresenceTracker, SignalMailbox
+        from host.state import PetState
+
+        mailbox = SignalMailbox()
+        mailbox.set(
+            PresenceSignals(
+                idle_seconds=5.0,
+                screen_locked=False,
+                foreground_app="editor",
+            )
+        )
+        prompts: list[str] = []
+
+        _run(
+            PetLoopConfig(interval_seconds=1.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=PetState(last_self_nudge_at=-10_000.0),
+            generate=_idle_generator(prompts),
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1000.0 + 3 * 3600.0]),
+            signal_mailbox=mailbox,
+            presence_tracker=PresenceTracker(
+                PresenceConfig(engaged_window_seconds=1.0, away_idle_seconds=300.0)
+            ),
+            output=io.StringIO(),
+        )
+
+        self.assertIn("Self-made attention alert", prompts[1])
+
+    def test_idle_nap_away_slows_next_wait(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+
+        calls = 0
+
+        def fake_generate(prompt: str, config: object) -> BehaviorCommand:
+            nonlocal calls
+            del prompt, config
+            calls += 1
+            if calls == 1:
+                return BehaviorCommand(
+                    mood="calm", animation="idle", text=None,
+                    alert=False, duration_ms=3000,
+                )
+            return BehaviorCommand(
+                mood="sleepy", animation="nap", text=None,
+                alert=False, duration_ms=8000,
+            )
+
+        sleeps: list[float] = []
+
+        _run(
+            PetLoopConfig(interval_seconds=10.0, max_cycles=3, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            sleep=sleeps.append,
+            output=io.StringIO(),
+        )
+
+        self.assertEqual(sleeps, [10.0, 40.0])
+
+
 class IsFailureTests(unittest.TestCase):
     def test_pass_with_failed_in_detail_is_not_a_failure(self) -> None:
         from host.pet_loop import _is_failure

@@ -133,6 +133,35 @@ class MemoryRetrievalTests(unittest.TestCase):
 
         self.assertEqual(results[0].summary, "fresh alert now")
 
+    def test_spontaneous_callback_prefers_old_meaningful_memory(self) -> None:
+        self.store.capture(
+            "direct_message",
+            "owner said good pup yesterday",
+            valence=70,
+            intensity=60,
+            owner_initiated=True,
+            tags=["praise"],
+        )
+        self.clock.advance(2 * 24 * 3600)
+
+        record = self.store.spontaneous_callback()
+
+        self.assertIsNotNone(record)
+        assert record is not None
+        self.assertIn("good pup", record.summary)
+
+    def test_spontaneous_callback_respects_age(self) -> None:
+        self.store.capture(
+            "direct_message",
+            "owner said good pup just now",
+            valence=70,
+            intensity=60,
+            owner_initiated=True,
+            tags=["praise"],
+        )
+
+        self.assertIsNone(self.store.spontaneous_callback())
+
 
 class MemoryControlTests(unittest.TestCase):
     def setUp(self) -> None:

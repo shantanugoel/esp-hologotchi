@@ -15,6 +15,7 @@ from .protocol import BehaviorCommand
 
 EVENT_MAX_LEN = 80
 RECENT_PHRASE_LIMIT = 5
+RECENT_ANIMATION_LIMIT = 5
 
 PRAISE_WORDS = frozenset(
     {
@@ -49,8 +50,11 @@ _GUIDANCE = (
     "that need the human now. If the current moment starts with 'Important "
     "alert:', animation must be alert and alert must be true.\n"
     "When you include text, keep it varied, dog-like, and one to three short "
-    "ASCII words; avoid repeating recent phrases. Prefer no text for idle, blink, "
-    "and look_around. Prefer duration_ms 2500-5000 for normal reactions, "
+    "ASCII words; avoid repeating recent phrases. Avoid repeating recent "
+    "animations when another listed behavior fits. Prefer no text for idle, blink, "
+    "and look_around. A self-made attention alert is only allowed when the current "
+    "moment explicitly says Self-made attention alert; otherwise reserve alert for "
+    "important alerts. Prefer duration_ms 2500-5000 for normal reactions, "
     "1000-2500 for blink/look_around, 6500-10000 for walk, 3000-7000 for "
     "play/excited, and 5000-9000 for sleepy, nap, or alert."
 )
@@ -62,11 +66,20 @@ class PetState:
     mood: str = "calm"
     last_event: str = "host loop started"
     recent_phrases: tuple[str, ...] = ()
+    recent_animations: tuple[str, ...] = ()
+    green_build_total: int = 0
+    green_build_streak: int = 0
+    failure_streak: int = 0
+    last_interaction_day: str = ""
+    last_daybeat_key: str = ""
+    last_callback_at: float = 0.0
+    last_self_nudge_at: float = 0.0
 
     def prompt_context(self) -> str:
         return (
             f"{self.affect.prompt_block()}\n\n"
             f"Recent phrases: {_format_recent_phrases(self.recent_phrases)}\n"
+            f"Recent animations: {_format_recent_animations(self.recent_animations)}\n"
             f"last_event: {self.last_event}"
         )
 
@@ -75,6 +88,10 @@ class PetState:
         self.last_event = _short_event(event)
         if behavior.text:
             self.recent_phrases = (*self.recent_phrases, behavior.text)[-RECENT_PHRASE_LIMIT:]
+        self.recent_animations = (
+            *self.recent_animations,
+            behavior.animation,
+        )[-RECENT_ANIMATION_LIMIT:]
         self.affect.register_behavior(behavior.animation)
 
 
@@ -167,3 +184,7 @@ def _short_event(event: str) -> str:
 
 def _format_recent_phrases(phrases: tuple[str, ...]) -> str:
     return ", ".join(phrases) if phrases else "none"
+
+
+def _format_recent_animations(animations: tuple[str, ...]) -> str:
+    return ", ".join(animations) if animations else "none"

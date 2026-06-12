@@ -233,11 +233,10 @@ The first useful animation set is enough:
      `device/src/render.rs`
    - film the first demo → shot list and trigger commands in [DEMO.md](DEMO.md)
 
-9. **Pet psychology, memory, and self-direction (host-only brain)** — 9a/9b/9c
-   implemented; 9d/9e still planned. No device or wire-protocol changes were
-   required.
+9. **Pet psychology, memory, and self-direction (host-only brain)** — done. No
+   device or wire-protocol changes were required.
 
-   Implemented so far (host-only): real-time needs/relationship decay and
+   Implemented (host-only): real-time needs/relationship decay and
    escalation in [`host/affect.py`](host/affect.py); the away / present-but-
    ignoring / engaged presence state machine in
    [`host/presence.py`](host/presence.py); and the versioned, thread-safe,
@@ -247,8 +246,13 @@ The first useful animation set is enough:
    owner-event effects, captures and recalls memory, and persists state across
    restarts. Presence signals (`POST /presence`) and memory controls
    (`GET /memory`, `POST /memory/forget|reset|writes`) are exposed on the
-   existing control server. Self-direction and surprise (9d) and the broader
-   emotional-range/safety polish (9e) remain planned.
+   existing control server. Self-direction and surprise (9d) are implemented in
+   [`host/pet_loop.py`](host/pet_loop.py) with recent-animation novelty,
+   spontaneous old-memory callbacks, rare earned moments, bounded
+   self-initiated nudges, and adaptive loop cadence. Emotional-range/safety
+   polish (9e) is implemented through prompt guidance, bounded deterministic
+   affect recovery, existing-animation mapping, privacy controls, and guarded
+   observed-pattern consolidation in [`host/reflection.py`](host/reflection.py).
 
    Goal: turn Mochi from a stateless reaction-picker into a persistent creature
    with needs, moods, memory, presence awareness, and self-direction, so it feels
@@ -389,7 +393,7 @@ The first useful animation set is enough:
    - current thread: Mochi wants attention after a quiet stretch.
    ```
 
-   ### 9d — Surprise and self-direction
+   ### 9d — Surprise and self-direction — done
 
    "Surprise the owner often" needs explicit mechanisms; a small (4B) model left to
    its own devices repeats itself. Add:
@@ -408,7 +412,7 @@ The first useful animation set is enough:
    - **adaptive cadence:** slow the loop right down when napping or away, speed it up
      on events. This feels alive and avoids pinning the model on the GPU 24/7.
 
-   ### 9e — Emotional range, privacy, controls, and safety rails
+   ### 9e — Emotional range, privacy, controls, and safety rails — done
 
    Emotional range (normal operating range medium; strong negative as a bounded
    upper edge, like a real pet having a hard moment):

@@ -77,6 +77,23 @@ class PetStatePromptTests(unittest.TestCase):
             ("phrase 1", "phrase 2", "phrase 3", "phrase 4", "phrase 5"),
         )
 
+    def test_recent_animations_keep_last_five_and_enter_prompt(self) -> None:
+        state = PetState()
+        for animation in ("idle", "blink", "look_around", "walk", "happy", "play"):
+            state.observe(
+                BehaviorCommand(
+                    mood="happy", animation=animation, text=None,
+                    alert=False, duration_ms=3000,
+                ),
+                "quiet desk time",
+            )
+
+        self.assertEqual(
+            state.recent_animations,
+            ("blink", "look_around", "walk", "happy", "play"),
+        )
+        self.assertIn("Recent animations: blink, look_around", state.prompt_context())
+
 
 class PetStateObserveTests(unittest.TestCase):
     def test_observe_records_mood_event_and_behavior_affect(self) -> None:

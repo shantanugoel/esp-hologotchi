@@ -30,6 +30,8 @@ RETENTION_HALFLIFE_SECONDS = 3 * 24 * 3600.0
 DEDUPE_WINDOW_SECONDS = 6 * 3600.0
 MAX_SUMMARY_LEN = 200
 MAX_TAGS = 8
+SPONTANEOUS_CALLBACK_MIN_AGE_SECONDS = 24 * 3600.0
+SPONTANEOUS_CALLBACK_COOLDOWN_SECONDS = 6 * 3600.0
 
 KIND_EPISODIC = "episodic"
 KIND_SEMANTIC = "semantic"
@@ -391,6 +393,92 @@ class MemoryStore:
                 "SELECT * FROM memories ORDER BY created_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [_to_record(row) for row in rows]
+
+    def count_by(
+        self,
+        *,
+        source: str | None = None,
+        tag: str | None = None,
+        kind: str | None = None,
+        after: float | None = None,
+    ) -> int:
+        clauses: list[str] = []
+        params: list[object] = []
+        if source is not None:
+            clauses.append("source = ?")
+            params.append(source)
+        if tag is not None:
+            token = _normalize_tag(tag)
+            if not token:
+                raise ValueError("tag must contain at least one usable character")
+            clauses.append("tags LIKE ?")
+            params.append(f"% {token} %")
+        if kind is not None:
+            if kind not in KINDS:
+                raise ValueError(f"unknown memory kind: {kind!r}")
+            clauses.append("kind = ?")
+            params.append(kind)
+        if after is not None:
+            clauses.append("created_at >= ?")
+            params.append(after)
+        where = "" if not clauses else f" WHERE {' AND '.join(clauses)}"
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT COUNT(*) AS n FROM memories{where}", params
+            ).fetchone()
+            return int(row["n"])
+
+    def has_summary(self, summary: str, *, kind: str | None = None) -> bool:
+        cleaned = _clean_summary(summary)
+        if not cleaned:
+            return False
+        clauses = ["summary = ?"]
+        params: list[object] = [cleaned]
+        if kind is not None:
+            if kind not in KINDS:
+                raise ValueError(f"unknown memory kind: {kind!r}")
+            clauses.append("kind = ?")
+            params.append(kind)
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT 1 FROM memories WHERE {' AND '.join(clauses)} LIMIT 1",
+                params,
+            ).fetchone()
+            return row is not None
+
+    def spontaneous_callback(
+        self,
+        *,
+        min_age_seconds: float = SPONTANEOUS_CALLBACK_MIN_AGE_SECONDS,
+        cooldown_seconds: float = SPONTANEOUS_CALLBACK_COOLDOWN_SECONDS,
+    ) -> MemoryRecord | None:
+        """Return one old, meaningful memory for a rare self-directed callback."""
+
+        now = self._now()
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT * FROM memories
+                WHERE created_at <= ?
+                  AND (? - last_recalled) >= ?
+                  AND kind IN (?, ?)
+                ORDER BY importance DESC, recall_count ASC, created_at ASC
+                LIMIT 1
+                """,
+                (
+                    now - max(0.0, min_age_seconds),
+                    now,
+                    max(0.0, cooldown_seconds),
+                    KIND_EPISODIC,
+                    KIND_SEMANTIC,
+                ),
+            ).fetchone()
+            if row is None:
+                return None
+            record = _to_record(row)
+            if self._writes_enabled:
+                self._mark_recalled([record.id], now)
+            return record
 
     def summary(self, top: int = 5) -> MemorySummary:
         with self._lock:
