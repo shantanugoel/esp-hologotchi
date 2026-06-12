@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
 
 from .control import ControlServerConfig, start_control_server
 from .inputs import HostInputQueue
+from .memory import MemoryStore, MemorySummary
 from .ollama import OllamaConfig, generate_behavior
 from .pet_loop import PetLoopConfig, run_pet_loop
+from .presence import PresenceConfig, PresenceTracker, SignalMailbox
 from .transport import DeviceEndpoint, send_behavior
 
 
@@ -132,12 +136,103 @@ def build_parser() -> argparse.ArgumentParser:
         default=8787,
         help="Port for the HTTP input endpoints.",
     )
+    parser.add_argument(
+        "--memory-db",
+        default=_default_memory_db(),
+        help=(
+            "Path to Mochi's local SQLite memory. Persists needs, relationship "
+            "state, and remembered moments across restarts."
+        ),
+    )
+    parser.add_argument(
+        "--no-memory",
+        action="store_true",
+        help="Run the loop without persisting or recalling memory.",
+    )
+    parser.add_argument(
+        "--reset-memory",
+        action="store_true",
+        help="Erase all memories and relationship state in --memory-db, then exit.",
+    )
+    parser.add_argument(
+        "--inspect-memory",
+        action="store_true",
+        help="Print a summary of the local memory store, then exit.",
+    )
+    parser.add_argument(
+        "--engaged-window-seconds",
+        type=float,
+        default=PresenceConfig().engaged_window_seconds,
+        help="How long after a direct interaction Mochi still counts as engaged.",
+    )
+    parser.add_argument(
+        "--away-idle-seconds",
+        type=float,
+        default=PresenceConfig().away_idle_seconds,
+        help="OS idle time (seconds) at which the owner is treated as away.",
+    )
+    parser.add_argument(
+        "--focus-jealousy-seconds",
+        type=float,
+        default=PresenceConfig().focus_jealousy_seconds,
+        help="How long heads-down on one foreground app before Mochi gets jealous.",
+    )
     return parser
+
+
+def _default_memory_db() -> str:
+    base = os.environ.get("XDG_STATE_HOME") or os.path.join(
+        os.path.expanduser("~"), ".local", "state"
+    )
+    return os.path.join(base, "hologotchi", "memory.db")
+
+
+def _open_memory(db_path: str, *, writes_enabled: bool = True) -> MemoryStore:
+    directory = os.path.dirname(db_path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    return MemoryStore(db_path, writes_enabled=writes_enabled)
+
+
+def _summary_dict(summary: MemorySummary) -> dict[str, object]:
+    return {
+        "total": summary.total,
+        "writes_enabled": summary.writes_enabled,
+        "by_kind": summary.by_kind,
+        "by_source": summary.by_source,
+        "top": [
+            {
+                "id": record.id,
+                "source": record.source,
+                "kind": record.kind,
+                "summary": record.summary,
+                "importance": round(record.importance, 2),
+                "recall_count": record.recall_count,
+            }
+            for record in summary.top
+        ],
+    }
+
+
+def _run_memory_admin(args: argparse.Namespace) -> int:
+    store = _open_memory(args.memory_db)
+    try:
+        if args.reset_memory:
+            store.reset()
+            print(f"memory reset: {args.memory_db}", file=sys.stderr, flush=True)
+        if args.inspect_memory:
+            print(json.dumps(_summary_dict(store.summary()), indent=2))
+    finally:
+        store.close()
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.reset_memory or args.inspect_memory:
+        return _run_memory_admin(args)
 
     model_config = OllamaConfig(
         base_url=args.ollama_url,
@@ -167,6 +262,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.loop:
         input_queue = HostInputQueue() if args.serve else None
+        memory = None if args.no_memory else _open_memory(args.memory_db)
+        signal_mailbox = SignalMailbox()
+        presence_tracker = PresenceTracker(
+            PresenceConfig(
+                engaged_window_seconds=args.engaged_window_seconds,
+                away_idle_seconds=args.away_idle_seconds,
+                focus_jealousy_seconds=args.focus_jealousy_seconds,
+            )
+        )
         control_server = (
             start_control_server(
                 ControlServerConfig(
@@ -174,6 +278,8 @@ def main(argv: list[str] | None = None) -> int:
                     port=args.message_port,
                 ),
                 input_queue,
+                memory=memory,
+                signal_mailbox=signal_mailbox,
             )
             if input_queue is not None
             else None
@@ -196,11 +302,16 @@ def main(argv: list[str] | None = None) -> int:
                 endpoint,
                 dry_run=args.dry_run,
                 input_queue=input_queue,
+                presence_tracker=presence_tracker,
+                signal_mailbox=signal_mailbox,
+                memory=memory,
                 log_events=args.serve,
             )
         finally:
             if control_server is not None:
                 control_server.close()
+            if memory is not None:
+                memory.close()
         return 0
 
     behavior = generate_behavior(args.prompt, model_config)

@@ -173,3 +173,19 @@ No model, no network required.
 
 Keep host and device in sync with the identifiers in this file. If a behavior is
 added or renamed, update this spec first.
+
+## Phase 9 psychology mapping (host-only)
+
+The host keeps a persistent inner life — needs, relationship state, presence
+awareness, and memory (see `PLAN.md` Phase 9). This adds **no** new animations
+and **no** wire-protocol changes: new feelings are expressed through the existing
+closed vocabulary above. The host prompt maps them like this:
+
+- sad / withdrawn → `worried`, `sleepy`, `nap`, or `idle`
+- grumpy → `worried`, `look_around`, or `walk`
+- needy → `play`, `look_around`, or `happy`
+- bright / bonded → `happy`, `play`, or `excited`
+- jealous (long heads-down on one app while ignoring Mochi) → as grumpy/needy
+
+Explicit `sad`/`pout`/`grumpy`/`love` animations are deliberately deferred until
+the memory system proves they are needed.

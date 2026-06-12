@@ -233,8 +233,22 @@ The first useful animation set is enough:
      `device/src/render.rs`
    - film the first demo → shot list and trigger commands in [DEMO.md](DEMO.md)
 
-9. **Pet psychology, memory, and self-direction (host-only brain)** — planned; no
-   device or wire-protocol changes required for this phase.
+9. **Pet psychology, memory, and self-direction (host-only brain)** — 9a/9b/9c
+   implemented; 9d/9e still planned. No device or wire-protocol changes were
+   required.
+
+   Implemented so far (host-only): real-time needs/relationship decay and
+   escalation in [`host/affect.py`](host/affect.py); the away / present-but-
+   ignoring / engaged presence state machine in
+   [`host/presence.py`](host/presence.py); and the versioned, thread-safe,
+   salience-scored SQLite memory store with bounded ranked retrieval and
+   inspect/forget/reset/pause controls in [`host/memory.py`](host/memory.py).
+   The pet loop now injects a clock, decays affect with presence, applies
+   owner-event effects, captures and recalls memory, and persists state across
+   restarts. Presence signals (`POST /presence`) and memory controls
+   (`GET /memory`, `POST /memory/forget|reset|writes`) are exposed on the
+   existing control server. Self-direction and surprise (9d) and the broader
+   emotional-range/safety polish (9e) remain planned.
 
    Goal: turn Mochi from a stateless reaction-picker into a persistent creature
    with needs, moods, memory, presence awareness, and self-direction, so it feels

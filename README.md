@@ -19,6 +19,9 @@ The repository currently includes:
 - a Python host CLI that can either send one behavior, run a small stateful pet loop,
   or accept direct messages, build/test results, and one important alert path
   through a local HTTP endpoint
+- a host-only psychology layer: real-time needs/relationship decay, an
+  away/ignoring/engaged presence state machine, and local SQLite memory with
+  inspect/forget/reset/pause controls
 
 See:
 
@@ -214,8 +217,54 @@ Useful flags:
 - `--serve` — expose `POST /message`, `/build`, `/test`, and `/alert` while the pet loop is running
 - `--message-bind-host 127.0.0.1` — bind host for the message endpoint; use `0.0.0.0` for LAN clients
 - `--message-port 8787` — bind port for the message endpoint
+- `--memory-db PATH` — where Mochi keeps its local SQLite memory (defaults under `$XDG_STATE_HOME/hologotchi/`)
+- `--no-memory` — run the loop without persisting or recalling memory
+- `--reset-memory` / `--inspect-memory` — erase or print the local memory store, then exit
+- `--away-idle-seconds 300` — OS idle time at which the owner counts as away
+- `--engaged-window-seconds 90` — how long after a direct interaction Mochi still feels engaged
+- `--focus-jealousy-seconds 1200` — heads-down time on one app before Mochi gets a little jealous
 
-## Verification
+## Mochi's mind: needs, presence, and memory
+
+When the loop runs it keeps a small but persistent inner life (host-only; the
+device firmware and wire protocol are unchanged):
+
+- **Needs and relationship (Phase 9a):** `social`, `play`, `rest`, and
+  `stimulation` drives decay in real wall-clock time and are replenished by your
+  attention and Mochi's own actions. Neglect escalates content → restless →
+  needy → sad/grumpy → withdrawn, always recoverable through attention, play,
+  praise, rest, or an apology. A slow `bond` level grows over days.
+- **Presence (Phase 9b):** Mochi distinguishes *away* (you're gone or the screen
+  is locked — not rejection) from *present-but-ignoring* (you're at the computer
+  but not interacting — real "ignored") from *engaged*. Feed cheap, opt-in,
+  local signals to the loop:
+
+  ```bash
+  curl -X POST http://127.0.0.1:8787/presence \
+    -H 'Content-Type: application/json' \
+    -d '{"idle_seconds":12,"screen_locked":false,"foreground_app":"editor"}'
+  ```
+
+  With no signals posted, Mochi assumes you are **away** (a benign absence, never
+  treated as rejection), so "ignored" and jealousy only kick in once a helper
+  starts reporting presence. Post the **full** signal set each time — each
+  `POST /presence` replaces the previous one. Long heads-down focus on a single
+  app while ignoring Mochi produces a grounded touch of jealousy.
+- **Memory (Phase 9c):** meaningful moments are scored for salience and stored in
+  local SQLite (recent messages, praise, ignored stretches, build/test outcomes,
+  alerts). A bounded, ranked set is recalled into each prompt. Memory is fully
+  local and private, with a versioned schema and thread-safe access.
+
+  ```bash
+  curl http://127.0.0.1:8787/memory                                  # inspect
+  curl -X POST http://127.0.0.1:8787/memory/forget -d '{"id":3}'      # forget one
+  curl -X POST http://127.0.0.1:8787/memory/forget -d '{"tag":"alert"}'
+  curl -X POST http://127.0.0.1:8787/memory/reset  -d '{}'           # wipe all
+  curl -X POST http://127.0.0.1:8787/memory/writes -d '{"enabled":false}'  # pause writes
+  ```
+
+  New feelings ship with **no firmware change**: sadness, neediness, grumpiness,
+  and jealousy are expressed through the existing 11 animations (see `PET.md`).
 
 ### Device
 

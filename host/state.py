@@ -1,39 +1,73 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from .affect import (
+    GRUMPY,
+    NEEDY,
+    RESTLESS,
+    SAD,
+    WITHDRAWN,
+    Affect,
+)
+from .presence import PresenceReport
 from .protocol import BehaviorCommand
 
-MIN_STAT = 0
-MAX_STAT = 100
 EVENT_MAX_LEN = 80
 RECENT_PHRASE_LIMIT = 5
+
+PRAISE_WORDS = frozenset(
+    {
+        "good", "love", "nice", "great", "proud", "yay", "best", "thanks",
+        "thank", "awesome", "clever", "cute", "amazing", "yes", "win",
+    }
+)
+HARSH_WORDS = frozenset(
+    {"bad", "stop", "no", "quiet", "shut", "stupid", "annoying", "hate", "ugh", "dumb"}
+)
+APOLOGY_WORDS = frozenset({"sorry", "apology", "apologies", "apologize", "forgive", "oops"})
+
+MESSAGE_PRAISE = "praise"
+MESSAGE_HARSH = "harsh"
+MESSAGE_APOLOGY = "apology"
+MESSAGE_NEUTRAL = "neutral"
+
+_GUIDANCE = (
+    "Choose Mochi's next behavior for the next few seconds, in character.\n"
+    "Mochi is driven by its inner state above, not by waiting for inputs. During "
+    "quiet desk time it still makes self-directed choices: walk, look_around, "
+    "play, excited, or nap when the state supports it. Use idle and blink as calm "
+    "beats, usually with empty text.\n"
+    "Express feelings through the existing behaviors (the device has no new "
+    "animations): sad or withdrawn -> worried, sleepy, nap, or idle; grumpy -> "
+    "worried, look_around, or walk; needy -> play, look_around, or happy; bright "
+    "and bonded -> happy, play, or excited. Use nap when truly sleepy and sleepy "
+    "when only drowsy.\n"
+    "Use happy/excited/play for direct affection, praise, passed build/test "
+    "results, returning after an absence, or spontaneous joy. Use worried for "
+    "failed build/test results and trouble. Use alert only for important alerts "
+    "that need the human now. If the current moment starts with 'Important "
+    "alert:', animation must be alert and alert must be true.\n"
+    "When you include text, keep it varied, dog-like, and one to three short "
+    "ASCII words; avoid repeating recent phrases. Prefer no text for idle, blink, "
+    "and look_around. Prefer duration_ms 2500-5000 for normal reactions, "
+    "1000-2500 for blink/look_around, 6500-10000 for walk, 3000-7000 for "
+    "play/excited, and 5000-9000 for sleepy, nap, or alert."
+)
 
 
 @dataclass
 class PetState:
+    affect: Affect = field(default_factory=Affect)
     mood: str = "calm"
-    energy: int = 55
-    attention: int = 50
-    affection: int = 70
-    playfulness: int = 55
-    sleepiness: int = 25
-    quiet_cycles: int = 0
     last_event: str = "host loop started"
     recent_phrases: tuple[str, ...] = ()
 
     def prompt_context(self) -> str:
         return (
-            "Persistent pet state:\n"
-            f"- mood: {self.mood}\n"
-            f"- energy: {self.energy}/100\n"
-            f"- attention: {self.attention}/100\n"
-            f"- affection: {self.affection}/100\n"
-            f"- playfulness: {self.playfulness}/100\n"
-            f"- sleepiness: {self.sleepiness}/100\n"
-            f"- quiet_cycles: {self.quiet_cycles}\n"
-            f"- recent_phrases: {_format_recent_phrases(self.recent_phrases)}\n"
-            f"- last_event: {self.last_event}"
+            f"{self.affect.prompt_block()}\n\n"
+            f"Recent phrases: {_format_recent_phrases(self.recent_phrases)}\n"
+            f"last_event: {self.last_event}"
         )
 
     def observe(self, behavior: BehaviorCommand, event: str) -> None:
@@ -41,102 +75,89 @@ class PetState:
         self.last_event = _short_event(event)
         if behavior.text:
             self.recent_phrases = (*self.recent_phrases, behavior.text)[-RECENT_PHRASE_LIMIT:]
-        is_quiet = event.lower().startswith("quiet desk time")
-        self.quiet_cycles = self.quiet_cycles + 1 if is_quiet else 0
-
-        match behavior.animation:
-            case "happy" | "excited":
-                self.energy += 8
-                self.attention += 4
-                self.affection += 4
-                self.playfulness -= 8
-                self.sleepiness -= 6
-            case "play":
-                self.energy -= 4
-                self.attention += 8
-                self.affection += 5
-                self.playfulness -= 14
-                self.sleepiness += 2
-            case "sleepy" | "nap":
-                self.energy -= 10
-                self.attention -= 4
-                self.playfulness += 4
-                self.sleepiness += 12
-            case "worried":
-                self.energy -= 6
-                self.attention += 10
-                self.playfulness -= 6
-                self.sleepiness += 3
-            case "alert":
-                self.energy += 10
-                self.attention += 18
-                self.playfulness -= 8
-                self.sleepiness -= 10
-            case "look_around" | "walk":
-                self.attention += 6
-                self.playfulness += 3
-                self.energy -= 2
-            case "blink" | "idle":
-                self.energy -= 1
-                self.attention -= 2
-                self.playfulness += 2
-                self.sleepiness += 2
-
-        self.clamp()
-
-    def idle_event(self) -> str:
-        if self.sleepiness >= 75:
-            return "Quiet desk time. Mochi is getting drowsy and may choose a real nap."
-        if self.energy >= 70 and self.playfulness >= 60:
-            return "Quiet desk time. Mochi feels playful and may invent a tiny game."
-        if self.quiet_cycles >= 3 and self.playfulness >= 50:
-            return "Quiet desk time. Mochi is bored and may wander, play, or demand attention."
-        if self.attention <= 25:
-            return "Quiet desk time. Mochi has not had attention lately and may act needy."
-        if self.quiet_cycles % 4 == 2:
-            return "Quiet desk time. Mochi may patrol the cube or sniff around."
-        return "Quiet desk time. Nothing urgent is happening, but Mochi can choose a small self-directed action."
-
-    def clamp(self) -> None:
-        self.energy = _clamp_stat(self.energy)
-        self.attention = _clamp_stat(self.attention)
-        self.affection = _clamp_stat(self.affection)
-        self.playfulness = _clamp_stat(self.playfulness)
-        self.sleepiness = _clamp_stat(self.sleepiness)
+        self.affect.register_behavior(behavior.animation)
 
 
-def build_stateful_prompt(state: PetState, event: str) -> str:
+def build_stateful_prompt(
+    state: PetState,
+    event: str,
+    *,
+    presence: PresenceReport | None = None,
+    memories: tuple[str, ...] = (),
+) -> str:
     cleaned = event.strip()
     if not cleaned:
         raise ValueError("event must not be empty")
+
+    parts: list[str] = []
+    if memories:
+        parts.append("Relevant memories:\n" + "\n".join(f"- {memory}" for memory in memories))
+    parts.append(state.prompt_context())
+    if presence is not None:
+        parts.append(_presence_block(presence))
+    parts.append(f"Current moment:\n{cleaned}")
+    parts.append(_GUIDANCE)
+    return "\n\n".join(parts)
+
+
+def describe_self_directed_situation(state: PetState, presence: PresenceReport) -> str:
+    affect = state.affect
+    inner = affect.overall_state()
+
+    if presence.returned_from_away:
+        return (
+            "The human just came back after being away for a while. React like a "
+            "pet greeting its owner."
+        )
+    if presence.away:
+        return "Quiet desk time. The human seems away; Mochi can wait calmly or nap."
+    if affect.is_sleepy():
+        return "Quiet desk time. Mochi is getting drowsy and may settle toward a nap."
+    if inner == WITHDRAWN:
+        return (
+            "Quiet desk time. Mochi has been neglected and feels withdrawn - a "
+            "low-energy sulk that attention, play, or an apology could still win back."
+        )
+    if inner == GRUMPY:
+        return "Quiet desk time. Mochi is frustrated and a little grumpy."
+    if inner == SAD:
+        return "Quiet desk time. Mochi feels lonely after being ignored and wants attention."
+    if presence.focus_pressure > 0 and presence.focus_app:
+        return (
+            "Quiet desk time. The human has been heads-down on one thing for a long "
+            "while; Mochi feels a little jealous and wants to be noticed."
+        )
+    if inner == NEEDY:
+        return "Quiet desk time. Mochi wants attention and may angle for a game or a look."
+    if inner == RESTLESS:
+        return "Quiet desk time. Mochi is restless and may patrol, sniff, or invent a tiny game."
+    if affect.is_bright():
+        return "Quiet desk time. Mochi feels good and playful and may start a little game."
     return (
-        f"{state.prompt_context()}\n\n"
-        f"Current moment:\n{cleaned}\n\n"
-        "Choose Mochi's next behavior for the next few seconds.\n"
-        "Quiet desk time should feel like Mochi is a real pet being driven by "
-        "the model: choose self-directed actions sometimes, including walk, "
-        "play, excited, or nap when the state supports it. Do not wait for "
-        "message/build/test/alert inputs to be expressive. Use idle, blink, "
-        "and look_around only as calm beats between bigger actions, usually "
-        "with empty text. Use nap when Mochi is truly sleepy and sleepy when "
-        "only drowsy. Use happy/excited/play for direct affection, praise, "
-        "passed build/test results, or spontaneous joyful energy. "
-        "Use worried for failed build/test results and confusing trouble. "
-        "Use alert only for important alerts that need the human to look now. "
-        "If the current moment starts with Important alert:, animation must be "
-        "alert and alert must be true. "
-        "When you include text, make it varied, dog-like, and one to three "
-        "short ASCII words. Avoid repeating any recent_phrases exactly; invent "
-        "fresh tiny phrases with sniffs, wags, borks, paws, patrols, flops, "
-        "boops, naps, or zoomies when they fit. Prefer no text for "
-        "idle-capable animations. Prefer duration_ms 2500-5000 for normal "
-        "reactions, 1000-2500 for blink/look_around, 6500-10000 for walk, "
-        "3000-7000 for play/excited, and 5000-9000 for sleepy, nap, or alert."
+        "Quiet desk time. Nothing urgent is happening, but Mochi can choose a small "
+        "self-directed action."
     )
 
 
-def _clamp_stat(value: int) -> int:
-    return min(MAX_STAT, max(MIN_STAT, value))
+def classify_message(text: str) -> str:
+    words = {word.strip(".,!?\"'").lower() for word in text.split()}
+    if words & APOLOGY_WORDS:
+        return MESSAGE_APOLOGY
+    if words & HARSH_WORDS:
+        return MESSAGE_HARSH
+    if words & PRAISE_WORDS:
+        return MESSAGE_PRAISE
+    return MESSAGE_NEUTRAL
+
+
+def _presence_block(presence: PresenceReport) -> str:
+    line = (
+        f"Presence: {presence.state.value} "
+        f"(ignored {int(presence.ignored_seconds)}s, away {int(presence.away_seconds)}s)."
+    )
+    if presence.focus_pressure > 0 and presence.focus_app:
+        line += f" The human has been heads-down in {presence.focus_app} for a long while."
+    return line
 
 
 def _short_event(event: str) -> str:

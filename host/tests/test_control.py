@@ -152,3 +152,112 @@ def _request_json(
             return response.status, json.loads(response.read())
     except error.HTTPError as exc:
         return exc.code, json.loads(exc.read())
+
+
+class ControlPresenceMemoryTests(unittest.TestCase):
+    def test_presence_endpoint_updates_mailbox(self) -> None:
+        from host.presence import SignalMailbox
+
+        inputs = HostInputQueue()
+        mailbox = SignalMailbox()
+        with ControlServer(
+            ControlServerConfig(port=0), inputs, signal_mailbox=mailbox
+        ) as server:
+            status, body = _request_json(
+                f"http://{server.address[0]}:{server.address[1]}/presence",
+                method="POST",
+                payload={"idle_seconds": 42.0, "screen_locked": False, "foreground_app": "editor"},
+            )
+
+        self.assertEqual(status, 202)
+        self.assertTrue(body["ok"])
+        signals = mailbox.get()
+        self.assertEqual(signals.idle_seconds, 42.0)
+        self.assertEqual(signals.foreground_app, "editor")
+
+    def test_presence_endpoint_disabled_returns_503(self) -> None:
+        inputs = HostInputQueue()
+        with ControlServer(ControlServerConfig(port=0), inputs) as server:
+            status, body = _request_json(
+                f"http://{server.address[0]}:{server.address[1]}/presence",
+                method="POST",
+                payload={"idle_seconds": 10.0},
+            )
+
+        self.assertEqual(status, 503)
+        self.assertFalse(body["ok"])
+
+    def test_presence_endpoint_rejects_bad_idle(self) -> None:
+        from host.presence import SignalMailbox
+
+        inputs = HostInputQueue()
+        with ControlServer(
+            ControlServerConfig(port=0), inputs, signal_mailbox=SignalMailbox()
+        ) as server:
+            status, body = _request_json(
+                f"http://{server.address[0]}:{server.address[1]}/presence",
+                method="POST",
+                payload={"idle_seconds": -5.0},
+            )
+
+        self.assertEqual(status, 400)
+        self.assertIn("idle_seconds", body["error"])
+
+    def test_memory_inspect_forget_and_reset(self) -> None:
+        from host.memory import MemoryStore
+
+        inputs = HostInputQueue()
+        memory = MemoryStore()
+        self.addCleanup(memory.close)
+        memory_id = memory.capture(
+            "alert", "calendar event soon", valence=50, intensity=80, alert=True,
+            tags=["alert", "calendar"],
+        )
+        assert memory_id is not None
+
+        with ControlServer(ControlServerConfig(port=0), inputs, memory=memory) as server:
+            base = f"http://{server.address[0]}:{server.address[1]}"
+
+            status, body = _request_json(f"{base}/memory", method="GET")
+            self.assertEqual(status, 200)
+            self.assertEqual(body["total"], 1)
+            self.assertEqual(body["top"][0]["summary"], "calendar event soon")
+
+            status, body = _request_json(
+                f"{base}/memory/forget", method="POST", payload={"tag": "calendar"}
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(body["removed"], 1)
+
+            status, body = _request_json(f"{base}/memory/reset", method="POST", payload={})
+            self.assertEqual(status, 200)
+
+        self.assertEqual(memory.count(), 0)
+
+    def test_memory_writes_toggle(self) -> None:
+        from host.memory import MemoryStore
+
+        inputs = HostInputQueue()
+        memory = MemoryStore()
+        self.addCleanup(memory.close)
+
+        with ControlServer(ControlServerConfig(port=0), inputs, memory=memory) as server:
+            status, body = _request_json(
+                f"http://{server.address[0]}:{server.address[1]}/memory/writes",
+                method="POST",
+                payload={"enabled": False},
+            )
+
+        self.assertEqual(status, 200)
+        self.assertFalse(body["writes_enabled"])
+        self.assertFalse(memory.writes_enabled)
+
+    def test_memory_endpoint_disabled_returns_503(self) -> None:
+        inputs = HostInputQueue()
+        with ControlServer(ControlServerConfig(port=0), inputs) as server:
+            status, body = _request_json(
+                f"http://{server.address[0]}:{server.address[1]}/memory", method="GET"
+            )
+
+        self.assertEqual(status, 503)
+        self.assertFalse(body["ok"])

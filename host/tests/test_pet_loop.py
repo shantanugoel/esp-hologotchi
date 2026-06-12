@@ -281,3 +281,189 @@ class PetLoopTests(unittest.TestCase):
         self.assertIn('"alert":true', payloads)
         self.assertIn('"text":"look now"', payloads)
         self.assertIn('"type":"loop_error"', errors.getvalue())
+
+
+class SeqClock:
+    def __init__(self, values: list[float]) -> None:
+        self._values = list(values)
+
+    def __call__(self) -> float:
+        if len(self._values) > 1:
+            return self._values.pop(0)
+        return self._values[0]
+
+
+def _idle_generator(prompts: list[str]):
+    def fake_generate(prompt: str, config: object) -> BehaviorCommand:
+        del config
+        prompts.append(prompt)
+        return BehaviorCommand(
+            mood="calm", animation="idle", text=None, alert=False, duration_ms=3000
+        )
+
+    return fake_generate
+
+
+class PetLoopPsychologyTests(unittest.TestCase):
+    def test_being_ignored_grows_loneliness_over_real_time(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+        from host.state import PetState
+        from host.affect import Affect
+        from host.presence import PresenceSignals, SignalMailbox
+
+        state = PetState(affect=Affect(social=20.0, loneliness=20.0))
+        mailbox = SignalMailbox()
+        mailbox.set(PresenceSignals(idle_seconds=5.0))  # present but not interacting
+
+        result = _run(
+            PetLoopConfig(interval_seconds=1.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=state,
+            generate=_idle_generator([]),
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1000.0 + 600.0]),
+            signal_mailbox=mailbox,
+            output=io.StringIO(),
+        )
+
+        self.assertGreater(result.affect.loneliness, 20.0)
+
+    def test_away_presence_does_not_grow_loneliness(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+        from host.state import PetState
+        from host.affect import Affect
+        from host.presence import PresenceSignals, SignalMailbox
+
+        state = PetState(affect=Affect(social=20.0, loneliness=30.0))
+        mailbox = SignalMailbox()
+        mailbox.set(PresenceSignals(screen_locked=True))
+
+        result = _run(
+            PetLoopConfig(interval_seconds=1.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=state,
+            generate=_idle_generator([]),
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1000.0 + 3600.0]),
+            signal_mailbox=mailbox,
+            output=io.StringIO(),
+        )
+
+        self.assertLessEqual(result.affect.loneliness, 30.0)
+
+    def test_direct_praise_raises_affection(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+        from host.state import PetState
+
+        inputs = HostInputQueue()
+        inputs.submit_direct_message("good pup, nice work")
+
+        result = _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=PetState(),
+            generate=_idle_generator([]),
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1005.0]),
+            input_queue=inputs,
+            output=io.StringIO(),
+        )
+
+        self.assertGreater(result.affect.affection, 70.0)
+
+
+class PetLoopMemoryTests(unittest.TestCase):
+    def test_memory_is_captured_persisted_and_recalled(self) -> None:
+        from host.memory import MemoryStore
+        from host.pet_loop import run_pet_loop as _run
+        from host.state import PetState
+
+        clock = SeqClock([1000.0, 1005.0])
+        memory = MemoryStore(now=clock)
+        self.addCleanup(memory.close)
+
+        inputs = HostInputQueue()
+        inputs.submit_direct_message("good pup, you did great")
+
+        _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=PetState(),
+            generate=_idle_generator([]),
+            sleep=lambda _: None,
+            now=clock,
+            input_queue=inputs,
+            memory=memory,
+            output=io.StringIO(),
+        )
+
+        self.assertGreaterEqual(memory.count(), 1)
+
+        # A fresh loop restores affect from memory and recalls the moment.
+        prompts: list[str] = []
+        restored = _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=1, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=PetState(),
+            generate=_idle_generator(prompts),
+            sleep=lambda _: None,
+            now=SeqClock([2000.0]),
+            memory=memory,
+            output=io.StringIO(),
+        )
+
+        self.assertIn("Relevant memories:", prompts[0])
+        self.assertIn("good pup", prompts[0])
+        self.assertGreater(restored.affect.affection, 70.0)
+
+
+class IsFailureTests(unittest.TestCase):
+    def test_pass_with_failed_in_detail_is_not_a_failure(self) -> None:
+        from host.pet_loop import _is_failure
+
+        self.assertFalse(_is_failure("Test passed. zero tests failed now"))
+        self.assertTrue(_is_failure("Build failed. linker error"))
+        self.assertTrue(_is_failure("Test failed."))
+        self.assertFalse(_is_failure("Build passed."))
+
+
+class PetLoopRestartTests(unittest.TestCase):
+    def test_restart_after_long_absence_does_not_spike_loneliness(self) -> None:
+        from host.memory import MemoryStore
+        from host.pet_loop import run_pet_loop as _run
+        from host.state import PetState
+        from host.affect import Affect
+
+        memory = MemoryStore(now=SeqClock([1000.0]))
+        self.addCleanup(memory.close)
+        # Persist a state from "last night" with a stale last_update.
+        memory.save_affect(
+            Affect(social=30.0, loneliness=25.0, last_update=1000.0).to_row(),
+            last_interaction=1000.0,
+        )
+
+        # Restart 8 hours later with no presence signals (unknown -> benign away).
+        result = _run(
+            PetLoopConfig(interval_seconds=1.0, max_cycles=1, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=PetState(),
+            generate=_idle_generator([]),
+            sleep=lambda _: None,
+            now=SeqClock([1000.0 + 8 * 3600.0]),
+            memory=memory,
+            output=io.StringIO(),
+        )
+
+        self.assertLessEqual(result.affect.loneliness, 30.0)

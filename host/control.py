@@ -10,8 +10,16 @@ from types import TracebackType
 from typing import TextIO
 
 from .inputs import HostInput, HostInputQueue, InputError
+from .memory import MemoryRecord, MemoryStore
+from .presence import PresenceSignals, SignalMailbox
 
 MAX_REQUEST_BYTES = 4096
+FOREGROUND_APP_MAX_LEN = 64
+INPUT_PATHS = frozenset({"/message", "/build", "/test", "/alert"})
+
+
+class FeatureDisabledError(RuntimeError):
+    """Raised when a request targets a feature the server was not started with."""
 
 
 @dataclass(frozen=True)
@@ -26,10 +34,12 @@ class ControlServer:
         config: ControlServerConfig,
         inputs: HostInputQueue,
         *,
+        memory: MemoryStore | None = None,
+        signal_mailbox: SignalMailbox | None = None,
         log_output: TextIO | None = None,
     ) -> None:
         self.config = config
-        self._server = _build_server(config, inputs, log_output)
+        self._server = _build_server(config, inputs, memory, signal_mailbox, log_output)
         self._thread = threading.Thread(
             target=self._server.serve_forever,
             name="hologotchi-control",
@@ -67,9 +77,17 @@ def start_control_server(
     config: ControlServerConfig,
     inputs: HostInputQueue,
     *,
+    memory: MemoryStore | None = None,
+    signal_mailbox: SignalMailbox | None = None,
     log_output: TextIO | None = sys.stderr,
 ) -> ControlServer:
-    server = ControlServer(config, inputs, log_output=log_output)
+    server = ControlServer(
+        config,
+        inputs,
+        memory=memory,
+        signal_mailbox=signal_mailbox,
+        log_output=log_output,
+    )
     server.start()
     return server
 
@@ -77,10 +95,14 @@ def start_control_server(
 def _build_server(
     config: ControlServerConfig,
     inputs: HostInputQueue,
+    memory: MemoryStore | None,
+    signal_mailbox: SignalMailbox | None,
     log_output: TextIO | None,
 ) -> ThreadingHTTPServer:
     class Handler(_ControlHandler):
         input_queue = inputs
+        memory_store = memory
+        mailbox = signal_mailbox
         control_log_output = log_output
 
     return ThreadingHTTPServer((config.bind_host, config.port), Handler)
@@ -88,60 +110,53 @@ def _build_server(
 
 class _ControlHandler(BaseHTTPRequestHandler):
     input_queue: HostInputQueue
+    memory_store: MemoryStore | None
+    mailbox: SignalMailbox | None
     control_log_output: TextIO | None
 
     def do_GET(self) -> None:
-        if self.path != "/health":
-            self._send_error(HTTPStatus.NOT_FOUND, "not found")
+        if self.path == "/health":
+            self._send_json(HTTPStatus.OK, {"ok": True})
             return
-
-        self._send_json(HTTPStatus.OK, {"ok": True})
+        if self.path == "/memory":
+            try:
+                self._send_json(HTTPStatus.OK, self._memory_summary())
+            except FeatureDisabledError as exc:
+                self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, str(exc))
+            return
+        self._send_error(HTTPStatus.NOT_FOUND, "not found")
 
     def do_POST(self) -> None:
-        if self.path not in {"/message", "/build", "/test", "/alert"}:
+        path = self.path
+        handlers = {
+            "/presence": self._handle_presence,
+            "/memory/forget": self._handle_memory_forget,
+            "/memory/reset": self._handle_memory_reset,
+            "/memory/writes": self._handle_memory_writes,
+        }
+        if path not in INPUT_PATHS and path not in handlers:
             self._send_error(HTTPStatus.NOT_FOUND, "not found")
             return
 
         try:
-            payload = self._read_json_body()
-            item = self._submit_input(self.path, payload)
+            payload = self._read_json_body(required=path != "/memory/reset")
+            if path in INPUT_PATHS:
+                item = self._submit_input(path, payload)
+                self._log_accepted(item)
+                self._send_json(HTTPStatus.ACCEPTED, {"ok": True, "id": item.id})
+            else:
+                status, response = handlers[path](payload)
+                self._send_json(status, response)
+        except FeatureDisabledError as exc:
+            self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, str(exc))
         except InputError as exc:
-            self._log(
-                {
-                    "type": "input",
-                    "status": "rejected",
-                    "source": "http",
-                    "remote": self.client_address[0],
-                    "error": str(exc),
-                }
-            )
+            self._log_rejected(str(exc))
             self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
-            return
         except ValueError as exc:
-            self._log(
-                {
-                    "type": "input",
-                    "status": "rejected",
-                    "source": "http",
-                    "remote": self.client_address[0],
-                    "error": str(exc),
-                }
-            )
+            self._log_rejected(str(exc))
             self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
-            return
 
-        self._log(
-            {
-                "type": "input",
-                "status": "accepted",
-                "id": item.id,
-                "source": item.source,
-                "transport": "http",
-                "remote": self.client_address[0],
-                "event": item.event,
-            }
-        )
-        self._send_json(HTTPStatus.ACCEPTED, {"ok": True, "id": item.id})
+    # -- inputs -------------------------------------------------------------
 
     def _submit_input(self, path: str, payload: dict[str, object]) -> HostInput:
         if path == "/message":
@@ -171,19 +186,102 @@ class _ControlHandler(BaseHTTPRequestHandler):
 
         raise ValueError("unsupported input path")
 
+    # -- presence (9b) ------------------------------------------------------
+
+    def _handle_presence(self, payload: dict[str, object]) -> tuple[HTTPStatus, dict[str, object]]:
+        if self.mailbox is None:
+            raise FeatureDisabledError("presence signals are not enabled")
+        signals = _parse_presence_signals(payload)
+        self.mailbox.set(signals)
+        self._log(
+            {
+                "type": "presence",
+                "status": "accepted",
+                "remote": self.client_address[0],
+                "idle_seconds": signals.idle_seconds,
+                "screen_locked": signals.screen_locked,
+                "foreground_app": signals.foreground_app,
+            }
+        )
+        return HTTPStatus.ACCEPTED, {"ok": True}
+
+    # -- memory (9c) --------------------------------------------------------
+
+    def _require_memory(self) -> MemoryStore:
+        if self.memory_store is None:
+            raise FeatureDisabledError("memory is not enabled")
+        return self.memory_store
+
+    def _memory_summary(self) -> dict[str, object]:
+        memory = self._require_memory()
+        summary = memory.summary()
+        return {
+            "ok": True,
+            "writes_enabled": summary.writes_enabled,
+            "total": summary.total,
+            "by_kind": summary.by_kind,
+            "by_source": summary.by_source,
+            "top": [_record_json(record) for record in summary.top],
+            "recent": [_record_json(record) for record in memory.recent(10)],
+        }
+
+    def _handle_memory_forget(
+        self, payload: dict[str, object]
+    ) -> tuple[HTTPStatus, dict[str, object]]:
+        memory = self._require_memory()
+        memory_id = payload.get("id")
+        if memory_id is not None:
+            if not isinstance(memory_id, int) or isinstance(memory_id, bool):
+                raise ValueError("id must be an integer")
+            removed = memory.forget(memory_id)
+            return HTTPStatus.OK, {"ok": True, "removed": removed}
+
+        tag = _optional_str(payload, "tag")
+        source = _optional_str(payload, "source")
+        before = _optional_number(payload, "before")
+        after = _optional_number(payload, "after")
+        if tag is None and source is None and before is None and after is None:
+            raise ValueError("forget requires id, tag, source, before, or after")
+        removed = memory.forget_by(tag=tag, source=source, before=before, after=after)
+        return HTTPStatus.OK, {"ok": True, "removed": removed}
+
+    def _handle_memory_reset(
+        self, payload: dict[str, object]
+    ) -> tuple[HTTPStatus, dict[str, object]]:
+        del payload
+        memory = self._require_memory()
+        memory.reset()
+        return HTTPStatus.OK, {"ok": True}
+
+    def _handle_memory_writes(
+        self, payload: dict[str, object]
+    ) -> tuple[HTTPStatus, dict[str, object]]:
+        memory = self._require_memory()
+        enabled = payload.get("enabled")
+        if not isinstance(enabled, bool):
+            raise ValueError("enabled must be a boolean")
+        memory.set_writes_enabled(enabled)
+        return HTTPStatus.OK, {"ok": True, "writes_enabled": enabled}
+
+    # -- plumbing -----------------------------------------------------------
+
     def log_message(self, format: str, *args: object) -> None:
         del format, args
 
-    def _read_json_body(self) -> dict[str, object]:
+    def _read_json_body(self, *, required: bool = True) -> dict[str, object]:
         raw_length = self.headers.get("Content-Length")
         if raw_length is None:
-            raise ValueError("Content-Length is required")
+            if required:
+                raise ValueError("Content-Length is required")
+            return {}
         try:
             length = int(raw_length)
         except ValueError as exc:
             raise ValueError("Content-Length must be an integer") from exc
         if length < 1:
-            raise ValueError("request body must not be empty")
+            if required:
+                raise ValueError("request body must not be empty")
+            return {}
         if length > MAX_REQUEST_BYTES:
             raise ValueError(f"request body must be at most {MAX_REQUEST_BYTES} bytes")
 
@@ -212,6 +310,30 @@ class _ControlHandler(BaseHTTPRequestHandler):
     def _send_error(self, status: HTTPStatus, message: str) -> None:
         self._send_json(status, {"ok": False, "error": message})
 
+    def _log_accepted(self, item: HostInput) -> None:
+        self._log(
+            {
+                "type": "input",
+                "status": "accepted",
+                "id": item.id,
+                "source": item.source,
+                "transport": "http",
+                "remote": self.client_address[0],
+                "event": item.event,
+            }
+        )
+
+    def _log_rejected(self, error: str) -> None:
+        self._log(
+            {
+                "type": "input",
+                "status": "rejected",
+                "source": "http",
+                "remote": self.client_address[0],
+                "error": error,
+            }
+        )
+
     def _log(self, payload: dict[str, object]) -> None:
         if self.control_log_output is None:
             return
@@ -220,3 +342,57 @@ class _ControlHandler(BaseHTTPRequestHandler):
             file=self.control_log_output,
             flush=True,
         )
+
+
+def _parse_presence_signals(payload: dict[str, object]) -> PresenceSignals:
+    idle_seconds = _optional_number(payload, "idle_seconds")
+    if idle_seconds is not None and idle_seconds < 0:
+        raise ValueError("idle_seconds must not be negative")
+
+    screen_locked = payload.get("screen_locked")
+    if screen_locked is not None and not isinstance(screen_locked, bool):
+        raise ValueError("screen_locked must be a boolean")
+
+    foreground_app = _optional_str(payload, "foreground_app")
+    if foreground_app is not None:
+        foreground_app = foreground_app[:FOREGROUND_APP_MAX_LEN]
+
+    return PresenceSignals(
+        idle_seconds=idle_seconds,
+        screen_locked=screen_locked,
+        foreground_app=foreground_app,
+    )
+
+
+def _optional_str(payload: dict[str, object], field: str) -> str | None:
+    value = payload.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string")
+    cleaned = " ".join(value.split())
+    return cleaned or None
+
+
+def _optional_number(payload: dict[str, object], field: str) -> float | None:
+    value = payload.get(field)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be a number")
+    return float(value)
+
+
+def _record_json(record: MemoryRecord) -> dict[str, object]:
+    return {
+        "id": record.id,
+        "created_at": record.created_at,
+        "source": record.source,
+        "kind": record.kind,
+        "summary": record.summary,
+        "tags": list(record.tags),
+        "valence": record.valence,
+        "intensity": record.intensity,
+        "importance": round(record.importance, 2),
+        "recall_count": record.recall_count,
+    }
