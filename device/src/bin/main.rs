@@ -105,7 +105,7 @@ async fn main(spawner: Spawner) -> ! {
     let rst = Output::new(peripherals.GPIO2, Level::High, OutputConfig::default());
 
     let mut display = Ssd1351::new(spi, dc, cs, rst);
-    if let Err(e) = display.init(Orientation::CUBE) {
+    if let Err(e) = display.init(Orientation::CUBE_ROTATED_CW) {
         panic!(
             "SSD1351 init failed on SPI2 (CLK=GPIO4/MOSI=GPIO6/CS=GPIO7/DC=GPIO3/RST=GPIO2): \
              {:?}. Check wiring and power.",

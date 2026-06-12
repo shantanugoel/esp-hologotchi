@@ -19,6 +19,7 @@
 #define CMD_SET_ROW 0x75
 #define CMD_WRITE_RAM 0x5C
 
+#define REMAP_VERTICAL_INCREMENT 0x01
 #define REMAP_MIRROR_H 0x02
 #define REMAP_BGR 0x04
 #define REMAP_FLIP_V 0x10
@@ -30,6 +31,7 @@ typedef struct {
   spi_dev_t spi;
   buffer_t framebuffer;
   bool display_on;
+  bool vertical_increment;
   bool mirror_h;
   bool flip_v;
   bool bgr;
@@ -80,6 +82,7 @@ static void present_display(chip_state_t *chip) {
 static void reset_panel(chip_state_t *chip) {
   memset(chip->rgba, 0, RGBA_BYTES);
   chip->display_on = false;
+  chip->vertical_increment = false;
   chip->mirror_h = false;
   chip->flip_v = false;
   chip->bgr = false;
@@ -157,6 +160,7 @@ static void apply_current_command(chip_state_t *chip) {
       present_display(chip);
       break;
     case CMD_SET_REMAP:
+      chip->vertical_increment = (chip->args[0] & REMAP_VERTICAL_INCREMENT) != 0;
       chip->mirror_h = (chip->args[0] & REMAP_MIRROR_H) != 0;
       chip->flip_v = (chip->args[0] & REMAP_FLIP_V) != 0;
       chip->bgr = (chip->args[0] & REMAP_BGR) != 0;
@@ -210,6 +214,19 @@ static void handle_data_byte(chip_state_t *chip, uint8_t value) {
 }
 
 static void advance_cursor(chip_state_t *chip) {
+  if (chip->vertical_increment) {
+    if (chip->next_row < chip->row_end) {
+      chip->next_row++;
+      return;
+    }
+
+    chip->next_row = chip->row_start;
+    if (chip->next_col < chip->col_end) {
+      chip->next_col++;
+    }
+    return;
+  }
+
   if (chip->next_col < chip->col_end) {
     chip->next_col++;
     return;

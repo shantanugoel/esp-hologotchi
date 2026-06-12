@@ -70,6 +70,8 @@ const REMAP_FLIP_V: u8 = 0b0001_0000;
 const REMAP_BGR: u8 = 0b0000_0100;
 /// bit1 = 1: reverse column address (horizontal mirror).
 const REMAP_MIRROR_H: u8 = 0b0000_0010;
+/// bit0 = 1: vertical address increment.
+const REMAP_VERTICAL_INCREMENT: u8 = 0b0000_0001;
 
 /// How the framebuffer maps onto the physical panel.
 ///
@@ -78,6 +80,8 @@ const REMAP_MIRROR_H: u8 = 0b0000_0010;
 /// the single orientation knob so the corrected path lives in exactly one place.
 #[derive(Clone, Copy)]
 pub struct Orientation {
+    /// Write RAM top-to-bottom before advancing to the next column.
+    pub vertical_increment: bool,
     /// Mirror horizontally (reverse column address).
     pub mirror_h: bool,
     /// Flip vertically (reverse COM scan direction).
@@ -90,6 +94,7 @@ impl Orientation {
     /// Direct-view panel orientation (no cube). Matches the common Waveshare/
     /// Adafruit re-map value `0x74`.
     pub const PANEL: Self = Self {
+        vertical_increment: false,
         mirror_h: false,
         flip_v: true,
         bgr: true,
@@ -97,18 +102,29 @@ impl Orientation {
 
     /// Orientation corrected for viewing through the dichroic cube: the cube
     /// reflects the image, so mirror one axis relative to [`Orientation::PANEL`].
-    /// Tune these three flags during the hardware "cube orientation" smoke test.
+    /// Tune these flags during the hardware "cube orientation" smoke test.
     pub const CUBE: Self = Self {
+        vertical_increment: false,
         mirror_h: true,
+        flip_v: true,
+        bgr: true,
+    };
+
+    /// Cube-corrected orientation for a panel mounted sideways, rotated 90
+    /// degrees clockwise relative to [`Orientation::CUBE`].
+    pub const CUBE_ROTATED_CW: Self = Self {
+        vertical_increment: true,
+        mirror_h: false,
         flip_v: true,
         bgr: true,
     };
 
     /// Build the SSD1351 re-map byte (command `0xA0`) for this orientation.
     fn remap_byte(self) -> u8 {
-        // bit0 = 0: horizontal address increment (we write the framebuffer
-        // row-major, so each byte pair walks left-to-right then top-to-bottom).
         let mut b = REMAP_65K_COLOR | REMAP_COM_SPLIT;
+        if self.vertical_increment {
+            b |= REMAP_VERTICAL_INCREMENT;
+        }
         if self.mirror_h {
             b |= REMAP_MIRROR_H;
         }

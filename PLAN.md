@@ -200,7 +200,7 @@ The first useful animation set is enough:
 
 2. **Bring up the display** — firmware implemented in `device/`; pending on-hardware tuning.
    - SSD1351 init → `device/src/display.rs` (deterministic init sequence, blocking SPI).
-   - orientation and mirror correction → single explicit `Orientation` re-map path; `Orientation::CUBE` for the dichroic cube (flags tunable at bring-up).
+   - orientation and mirror correction → single explicit `Orientation` re-map path; `Orientation::CUBE_ROTATED_CW` for the sideways dichroic-cube mount (flags tunable at bring-up).
    - one idle animation → `device/src/render.rs`: Mochi `idle` with integer breathing + occasional `blink`.
 
 3. **Bring up Wi-Fi** — done; firmware has local TCP behavior transport.
