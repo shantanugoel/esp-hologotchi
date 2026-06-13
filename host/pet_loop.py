@@ -11,6 +11,7 @@ from .inputs import HostInput, HostInputQueue
 from .memory import KIND_EPISODIC, MemoryStore
 from .ollama import OllamaConfig, OllamaError, generate_behavior
 from .presence import PresenceReport, PresenceSignals, PresenceTracker, SignalMailbox
+from .prompt import load_pet_name
 from .protocol import ANIMATION_TO_MOOD, BehaviorCommand
 from .reflection import consolidate_memory
 from .state import (
@@ -92,6 +93,7 @@ def run_pet_loop(
     out = output or sys.stdout
     err = error_output or sys.stderr
     pet_state = state or PetState()
+    pet_name = load_pet_name()
     presence = presence_tracker or PresenceTracker()
     _restore_persistent_state(memory, pet_state, presence)
 
@@ -124,21 +126,27 @@ def run_pet_loop(
                 if pending.source in EFFECT_SOURCES:
                     _apply_owner_effects(pet_state.affect, pending)
             else:
-                situation = describe_self_directed_situation(pet_state, report)
+                situation = describe_self_directed_situation(
+                    pet_state, report, pet_name=pet_name
+                )
                 event = _LoopEvent(id="idle", source="idle", event=situation)
 
             if memory is not None:
                 _capture_memory(memory, event, report, pet_state.affect)
                 consolidate_memory(memory)
 
-            notes = _surprise_notes(pet_state, event, report, memory, now_ts)
+            notes = _surprise_notes(pet_state, event, report, memory, now_ts, pet_name)
             if notes:
                 situation = f"{situation}\n" + "\n".join(notes)
 
             memories = _retrieve_memories(memory, situation)
 
             prompt = build_stateful_prompt(
-                pet_state, situation, presence=report, memories=memories
+                pet_state,
+                situation,
+                pet_name=pet_name,
+                presence=report,
+                memories=memories,
             )
             try:
                 behavior = generate(prompt, model_config)
@@ -290,14 +298,15 @@ def _surprise_notes(
     report: PresenceReport,
     memory: MemoryStore | None,
     now: float,
+    pet_name: str,
 ) -> list[str]:
     notes: list[str] = []
-    special = _record_special_moment(state, event, now, memory)
+    special = _record_special_moment(state, event, now, memory, pet_name)
     if special is not None:
         notes.append(f"Rare special moment: {special}")
 
     if event.source == "idle":
-        nudge = _self_nudge_note(state, report, now)
+        nudge = _self_nudge_note(state, report, now, pet_name)
         if nudge is not None:
             notes.append(nudge)
 
@@ -317,6 +326,7 @@ def _record_special_moment(
     event: _LoopEvent,
     now: float,
     memory: MemoryStore | None,
+    pet_name: str,
 ) -> str | None:
     day_key = _local_day_key(now)
     if event.source == "direct_message":
@@ -349,16 +359,20 @@ def _record_special_moment(
             key = f"{day_key}:late"
             if state.last_daybeat_key != key:
                 state.last_daybeat_key = key
-                return "late-night desk beat; Mochi may get sleepy or gently dramatic."
+                return (
+                    f"late-night desk beat; {pet_name} may get sleepy or gently dramatic."
+                )
         if hour >= 22:
             key = f"{day_key}:night"
             if state.last_daybeat_key != key:
                 state.last_daybeat_key = key
-                return "night desk beat; Mochi may wind down toward sleep."
+                return f"night desk beat; {pet_name} may wind down toward sleep."
     return None
 
 
-def _self_nudge_note(state: PetState, report: PresenceReport, now: float) -> str | None:
+def _self_nudge_note(
+    state: PetState, report: PresenceReport, now: float, pet_name: str
+) -> str | None:
     if now - state.last_self_nudge_at < SELF_NUDGE_MIN_SECONDS:
         return None
     affect = state.affect
@@ -366,16 +380,16 @@ def _self_nudge_note(state: PetState, report: PresenceReport, now: float) -> str
         state.last_self_nudge_at = now
         return (
             "Self-made attention alert: the owner has been heads-down for about "
-            "two hours. Mochi may ask for attention once, gently, without guilt."
+            f"two hours. {pet_name} may ask for attention once, gently, without guilt."
         )
     if report.away:
         return None
     if affect.social < 25 or affect.loneliness >= 55:
         state.last_self_nudge_at = now
-        return "Self-initiated nudge: Mochi may ask for a tiny bit of attention."
+        return f"Self-initiated nudge: {pet_name} may ask for a tiny bit of attention."
     if affect.play < 25 or affect.stimulation < 25:
         state.last_self_nudge_at = now
-        return "Self-initiated nudge: Mochi may start a tiny game or patrol."
+        return f"Self-initiated nudge: {pet_name} may start a tiny game or patrol."
     return None
 
 

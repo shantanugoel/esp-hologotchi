@@ -62,6 +62,12 @@ class PetStatePromptTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_stateful_prompt(PetState(), "   ")
 
+    def test_prompt_uses_configured_pet_name(self) -> None:
+        prompt = build_stateful_prompt(PetState(), "quiet desk time", pet_name="Pip")
+
+        self.assertIn("Choose Pip's next behavior", prompt)
+        self.assertNotIn("Choose Mochi's next behavior", prompt)
+
     def test_recent_phrases_keep_last_five(self) -> None:
         state = PetState()
         for index in range(6):

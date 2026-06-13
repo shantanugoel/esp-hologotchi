@@ -33,31 +33,32 @@ MESSAGE_HARSH = "harsh"
 MESSAGE_APOLOGY = "apology"
 MESSAGE_NEUTRAL = "neutral"
 
-_GUIDANCE = (
-    "Choose Mochi's next behavior for the next few seconds, in character.\n"
-    "Mochi is driven by its inner state above, not by waiting for inputs. During "
-    "quiet desk time it still makes self-directed choices: walk, look_around, "
-    "play, excited, or nap when the state supports it. Use idle and blink as calm "
-    "beats, usually with empty text.\n"
-    "Express feelings through the existing behaviors (the device has no new "
-    "animations): sad or withdrawn -> worried, sleepy, nap, or idle; grumpy -> "
-    "worried, look_around, or walk; needy -> play, look_around, or happy; bright "
-    "and bonded -> happy, play, or excited. Use nap when truly sleepy and sleepy "
-    "when only drowsy.\n"
-    "Use happy/excited/play for direct affection, praise, passed build/test "
-    "results, returning after an absence, or spontaneous joy. Use worried for "
-    "failed build/test results and trouble. Use alert only for important alerts "
-    "that need the human now. If the current moment starts with 'Important "
-    "alert:', animation must be alert and alert must be true.\n"
-    "When you include text, keep it varied, dog-like, and one to three short "
-    "ASCII words; avoid repeating recent phrases. Avoid repeating recent "
-    "animations when another listed behavior fits. Prefer no text for idle, blink, "
-    "and look_around. A self-made attention alert is only allowed when the current "
-    "moment explicitly says Self-made attention alert; otherwise reserve alert for "
-    "important alerts. Prefer duration_ms 2500-5000 for normal reactions, "
-    "1000-2500 for blink/look_around, 6500-10000 for walk, 3000-7000 for "
-    "play/excited, and 5000-9000 for sleepy, nap, or alert."
-)
+def _guidance(pet_name: str) -> str:
+    return (
+        f"Choose {pet_name}'s next behavior for the next few seconds, in character.\n"
+        f"{pet_name} is driven by its inner state above, not by waiting for inputs. "
+        "During quiet desk time it still makes self-directed choices: walk, "
+        "look_around, play, excited, or nap when the state supports it. Use idle "
+        "and blink as calm beats, usually with empty text.\n"
+        "Express feelings through the existing behaviors (the device has no new "
+        "animations): sad or withdrawn -> worried, sleepy, nap, or idle; grumpy -> "
+        "worried, look_around, or walk; needy -> play, look_around, or happy; bright "
+        "and bonded -> happy, play, or excited. Use nap when truly sleepy and sleepy "
+        "when only drowsy.\n"
+        "Use happy/excited/play for direct affection, praise, passed build/test "
+        "results, returning after an absence, or spontaneous joy. Use worried for "
+        "failed build/test results and trouble. Use alert only for important alerts "
+        "that need the human now. If the current moment starts with 'Important "
+        "alert:', animation must be alert and alert must be true.\n"
+        "When you include text, keep it varied, dog-like, and one to three short "
+        "ASCII words; avoid repeating recent phrases. Avoid repeating recent "
+        "animations when another listed behavior fits. Prefer no text for idle, blink, "
+        "and look_around. A self-made attention alert is only allowed when the current "
+        "moment explicitly says Self-made attention alert; otherwise reserve alert for "
+        "important alerts. Prefer duration_ms 2500-5000 for normal reactions, "
+        "1000-2500 for blink/look_around, 6500-10000 for walk, 3000-7000 for "
+        "play/excited, and 5000-9000 for sleepy, nap, or alert."
+    )
 
 
 @dataclass
@@ -99,6 +100,7 @@ def build_stateful_prompt(
     state: PetState,
     event: str,
     *,
+    pet_name: str = "Mochi",
     presence: PresenceReport | None = None,
     memories: tuple[str, ...] = (),
 ) -> str:
@@ -113,11 +115,13 @@ def build_stateful_prompt(
     if presence is not None:
         parts.append(_presence_block(presence))
     parts.append(f"Current moment:\n{cleaned}")
-    parts.append(_GUIDANCE)
+    parts.append(_guidance(pet_name))
     return "\n\n".join(parts)
 
 
-def describe_self_directed_situation(state: PetState, presence: PresenceReport) -> str:
+def describe_self_directed_situation(
+    state: PetState, presence: PresenceReport, *, pet_name: str = "Mochi"
+) -> str:
     affect = state.affect
     inner = affect.overall_state()
 
@@ -127,31 +131,40 @@ def describe_self_directed_situation(state: PetState, presence: PresenceReport) 
             "pet greeting its owner."
         )
     if presence.away:
-        return "Quiet desk time. The human seems away; Mochi can wait calmly or nap."
+        return f"Quiet desk time. The human seems away; {pet_name} can wait calmly or nap."
     if affect.is_sleepy():
-        return "Quiet desk time. Mochi is getting drowsy and may settle toward a nap."
+        return f"Quiet desk time. {pet_name} is getting drowsy and may settle toward a nap."
     if inner == WITHDRAWN:
         return (
-            "Quiet desk time. Mochi has been neglected and feels withdrawn - a "
+            f"Quiet desk time. {pet_name} has been neglected and feels withdrawn - a "
             "low-energy sulk that attention, play, or an apology could still win back."
         )
     if inner == GRUMPY:
-        return "Quiet desk time. Mochi is frustrated and a little grumpy."
+        return f"Quiet desk time. {pet_name} is frustrated and a little grumpy."
     if inner == SAD:
-        return "Quiet desk time. Mochi feels lonely after being ignored and wants attention."
+        return (
+            f"Quiet desk time. {pet_name} feels lonely after being ignored and wants "
+            "attention."
+        )
     if presence.focus_pressure > 0 and presence.focus_app:
         return (
             "Quiet desk time. The human has been heads-down on one thing for a long "
-            "while; Mochi feels a little jealous and wants to be noticed."
+            f"while; {pet_name} feels a little jealous and wants to be noticed."
         )
     if inner == NEEDY:
-        return "Quiet desk time. Mochi wants attention and may angle for a game or a look."
+        return (
+            f"Quiet desk time. {pet_name} wants attention and may angle for a game or a "
+            "look."
+        )
     if inner == RESTLESS:
-        return "Quiet desk time. Mochi is restless and may patrol, sniff, or invent a tiny game."
+        return (
+            f"Quiet desk time. {pet_name} is restless and may patrol, sniff, or invent a "
+            "tiny game."
+        )
     if affect.is_bright():
-        return "Quiet desk time. Mochi feels good and playful and may start a little game."
+        return f"Quiet desk time. {pet_name} feels good and playful and may start a little game."
     return (
-        "Quiet desk time. Nothing urgent is happening, but Mochi can choose a small "
+        f"Quiet desk time. Nothing urgent is happening, but {pet_name} can choose a small "
         "self-directed action."
     )
 

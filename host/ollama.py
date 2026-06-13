@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from urllib import error, request
 
-from .prompt import build_situation_prompt, load_personality_prompt
+from .prompt import build_situation_prompt, load_personality_prompt, load_pet_name
 from .protocol import BehaviorCommand, ValidationError, parse_behavior_response
 
 
@@ -24,10 +24,11 @@ class OllamaConfig:
 
 
 def build_generate_request(user_prompt: str, config: OllamaConfig) -> dict[str, object]:
+    pet_name = load_pet_name()
     payload = {
         "model": config.model_preset,
         "system": load_personality_prompt(),
-        "prompt": build_situation_prompt(user_prompt),
+        "prompt": build_situation_prompt(user_prompt, pet_name=pet_name),
         "stream": False,
         "format": "json",
         "think": config.think,
