@@ -122,6 +122,60 @@ class AffectEventTests(unittest.TestCase):
         self.assertEqual(affect.snapshot()["social"], 100)
 
 
+class AffectTouchTests(unittest.TestCase):
+    def test_boop_gives_light_attention_and_pep(self) -> None:
+        affect = Affect(social=20.0, stimulation=20.0, energy=40.0, loneliness=60.0)
+
+        affect.register_boop()
+
+        self.assertGreater(affect.social, 20)
+        self.assertGreater(affect.stimulation, 20)
+        self.assertGreater(affect.energy, 40)
+        self.assertLess(affect.loneliness, 60)
+
+    def test_pet_soothes_and_repairs_affection(self) -> None:
+        affect = Affect(
+            affection=40.0, frustration=80.0, loneliness=70.0, stimulation=50.0
+        )
+
+        affect.register_pet()
+
+        self.assertGreater(affect.affection, 40)
+        self.assertLess(affect.frustration, 80)
+        self.assertLess(affect.loneliness, 70)
+        # A hold meets the contact need; it must not lower a satisfaction drive.
+        self.assertGreaterEqual(affect.stimulation, 50)
+
+    def test_repeated_petting_does_not_make_a_content_pet_restless(self) -> None:
+        from host.affect import CONTENT, RESTLESS
+
+        affect = Affect(stimulation=40.0, play=60.0)
+        self.assertEqual(affect.overall_state(), CONTENT)
+
+        for _ in range(5):
+            affect.register_pet()
+
+        self.assertNotEqual(affect.overall_state(), RESTLESS)
+        self.assertGreaterEqual(affect.stimulation, 40)
+
+    def test_pet_does_not_force_play(self) -> None:
+        affect = Affect(play=30.0)
+
+        affect.register_pet()
+
+        self.assertEqual(affect.play, 30.0)
+
+    def test_play_invite_replenishes_play_and_stimulation(self) -> None:
+        affect = Affect(play=20.0, stimulation=20.0, energy=80.0)
+
+        affect.register_play_invite()
+
+        self.assertGreater(affect.play, 20)
+        self.assertGreater(affect.stimulation, 20)
+        # Play costs a little energy.
+        self.assertLess(affect.energy, 80)
+
+
 class AffectStateTests(unittest.TestCase):
     def test_content_when_drives_are_healthy(self) -> None:
         affect = Affect(

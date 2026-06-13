@@ -8,7 +8,7 @@ from typing import Callable, TextIO
 
 from .affect import Affect
 from .body import BodyModel, BodySituation, BodyState
-from .inputs import HostInput, HostInputQueue
+from .inputs import HostInput, HostInputQueue, TOUCH_SOURCE
 from .memory import KIND_EPISODIC, MemoryStore
 from .ollama import OllamaConfig, OllamaError, generate_proposal
 from .presence import PresenceReport, PresenceSignals, PresenceTracker, SignalMailbox
@@ -44,11 +44,15 @@ BURN_IN_INTERVAL_SECONDS = 150.0
 BURN_IN_DURATION_MS = 1500
 # Sources whose event drives a deterministic affect update.
 EFFECT_SOURCES = frozenset(
-    {"direct_message", "build_result", "test_result", "important_alert"}
+    {"direct_message", "build_result", "test_result", "important_alert", TOUCH_SOURCE}
 )
 # Sources that count as the owner directly interacting with Mochi (resets the
-# "ignored" timer). An alert being raised is not the same as the owner engaging.
-ENGAGEMENT_SOURCES = frozenset({"direct_message"})
+# "ignored" timer). An alert being raised is not the same as the owner engaging,
+# but a physical touch is.
+ENGAGEMENT_SOURCES = frozenset({"direct_message", TOUCH_SOURCE})
+# A doubletap only triggers a play spike when Mochi has the energy for it;
+# otherwise the play invite is acknowledged with a light boop.
+PLAY_INVITE_MIN_ENERGY = 30.0
 RETRIEVE_LIMIT = 3
 CALLBACK_MIN_SECONDS = 6 * 3600.0
 SELF_NUDGE_MIN_SECONDS = 30 * 60.0
@@ -76,10 +80,13 @@ class _LoopEvent:
     id: str
     source: str
     event: str
+    gesture: str | None = None
 
     @classmethod
     def from_input(cls, item: HostInput) -> "_LoopEvent":
-        return cls(id=item.id, source=item.source, event=item.event)
+        return cls(
+            id=item.id, source=item.source, event=item.event, gesture=item.gesture
+        )
 
 
 def run_pet_loop(
@@ -148,6 +155,8 @@ def run_pet_loop(
                     situation = pending.event
                     if pending.source in EFFECT_SOURCES:
                         _apply_owner_effects(pet_state.affect, pending)
+                    if pending.source == TOUCH_SOURCE:
+                        body_model.last_touch_at = now_ts
             else:
                 situation = describe_self_directed_situation(
                     pet_state, report, pet_name=pet_name
@@ -285,6 +294,18 @@ def _apply_owner_effects(affect: Affect, event: _LoopEvent) -> None:
             affect.register_good_outcome()
     elif event.source == "important_alert":
         affect.register_alert()
+    elif event.source == TOUCH_SOURCE:
+        _apply_touch_effects(affect, event.gesture)
+
+
+def _apply_touch_effects(affect: Affect, gesture: str | None) -> None:
+    if gesture == "hold":
+        affect.register_pet()
+    elif gesture == "doubletap" and affect.energy >= PLAY_INVITE_MIN_ENERGY:
+        affect.register_play_invite()
+    else:
+        # A tap, or a play invite Mochi is too tired to accept: a light boop.
+        affect.register_boop()
 
 
 def _capture_memory(
@@ -318,6 +339,8 @@ def _memory_signal(
             MESSAGE_APOLOGY: 35,
         }.get(kind, 20)
         return valence, 55, True, False, ["message", kind]
+    if source == TOUCH_SOURCE:
+        return _touch_memory_signal(event.gesture)
     if source in {"build_result", "test_result"}:
         label = source.split("_", 1)[0]
         if _is_failure(event.event):
@@ -341,6 +364,19 @@ def _memory_signal(
 
 def _as_intensity(primary: float, secondary: float) -> int:
     return max(0, min(100, int(round(max(primary, secondary)))))
+
+
+def _touch_memory_signal(
+    gesture: str | None,
+) -> tuple[int, int, bool, bool, list[str]]:
+    # Touch is always owner-initiated; a sustained pet is the most salient
+    # affection moment, a play invite next, a quick boop least. The doubletap is
+    # tagged as an invite regardless of whether Mochi had the energy to accept.
+    if gesture == "hold":
+        return 60, 60, True, False, ["touch", "affection"]
+    if gesture == "doubletap":
+        return 50, 55, True, False, ["touch", "play_invite"]
+    return 40, 45, True, False, ["touch", "boop"]
 
 
 def _is_failure(event_text: str) -> bool:

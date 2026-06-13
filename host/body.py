@@ -144,6 +144,12 @@ class BodyModel:
         away = bool(report and report.away)
         engaged = bool(report and report.engaged)
         returned = bool(report and report.returned_from_away)
+        # A *passive* return (presence/idle reclassification) is an emotional
+        # reunion that may perk straight up from sleep. A return that coincides
+        # with active owner contact (a touch or direct message — which itself
+        # resets the engaged/return state) still wakes gently through waking, so
+        # demo moment 6 (touch -> no instant chaos) holds even after a long away.
+        reunion_perk = returned and event_source not in WAKE_TRIGGER_SOURCES
         late_night = self._is_late_night(local_hour)
         well_rested = (
             affect.energy >= WELL_RESTED_ENERGY
@@ -171,6 +177,7 @@ class BodyModel:
             self.state,
             sleep_pressure=sleep_pressure,
             wake_trigger=wake_trigger,
+            reunion_perk=reunion_perk,
             engaged=engaged,
             well_rested=well_rested,
             min_nap_elapsed=min_nap_elapsed,
@@ -272,6 +279,7 @@ def _evaluate(
     *,
     sleep_pressure: bool,
     wake_trigger: bool,
+    reunion_perk: bool,
     engaged: bool,
     well_rested: bool,
     min_nap_elapsed: bool,
@@ -280,7 +288,14 @@ def _evaluate(
 ) -> tuple[tuple[BodyState, ...], BodyState]:
     if state is BodyState.SLEEPING:
         if wake_trigger:
-            allowed = {BodyState.SLEEPING, BodyState.DROWSY, BodyState.WAKING, BodyState.AWAKE}
+            # A wake trigger (touch, alert, direct message, meaningful return)
+            # interrupts sleep, but active contact (touch/message) passes through
+            # waking/drowsy rather than snapping straight to awake — no instant
+            # chaos. Only a passive owner return may perk straight up; an alert is
+            # forced awake in resolve().
+            allowed = {BodyState.SLEEPING, BodyState.DROWSY, BodyState.WAKING}
+            if reunion_perk:
+                allowed.add(BodyState.AWAKE)
             return _order(allowed), BodyState.WAKING
         if not sleep_pressure and well_rested:
             # Fully rested with no reason to sleep: refuse to stay asleep so the
@@ -356,7 +371,9 @@ def _awake_animations(
     options: set[str] = set(affect.suggested_animations())
     if report is not None:
         if report.returned_from_away or report.engaged:
-            options |= {"happy", "excited", "look_around"}
+            # Owner is actively interacting now (e.g. right after a touch), so an
+            # energetic play response is on the table alongside a bright greeting.
+            options |= {"happy", "excited", "play", "look_around"}
         if report.ignoring:
             options |= {"look_around", "walk", "play", "worried", "idle"}
     options.add("idle")

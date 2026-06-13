@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import queue
 import threading
 from dataclasses import dataclass
@@ -9,8 +10,13 @@ DIRECT_MESSAGE_MAX_LEN = 500
 INDIRECT_DETAIL_MAX_LEN = 240
 ALERT_TEXT_MAX_LEN = 240
 BUILD_TEST_KINDS = frozenset({"build", "test"})
+TOUCH_GESTURES = frozenset({"tap", "hold", "doubletap"})
+# Upper bound on a reported hold duration (ms); guards against a bogus uplink
+# frame. A real TTP223 hold is at most a few seconds.
+TOUCH_DURATION_MAX_MS = 60_000
 
 PRESENCE_SIGNAL_SOURCE = "presence_signal"
+TOUCH_SOURCE = "touch"
 
 
 class InputError(ValueError):
@@ -22,6 +28,9 @@ class HostInput:
     id: str
     source: str
     event: str
+    # Set only for touch inputs; carries the classified gesture so the loop can
+    # apply a deterministic per-gesture effect without re-parsing the event text.
+    gesture: str | None = None
 
 
 class HostInputQueue:
@@ -77,6 +86,27 @@ class HostInputQueue:
             id=f"alert-{self._next_id()}",
             source="important_alert",
             event=f"Important alert: {message}",
+        )
+        self._queue.put(item)
+        return item
+
+    def submit_touch(
+        self, gesture: str, duration_ms: int | float | None = None
+    ) -> HostInput:
+        """Enqueue a physical-contact event (tap / hold / doubletap).
+
+        ``duration_ms`` is only meaningful for a ``hold`` and is folded into the
+        human-readable situation text; the per-gesture effect itself is
+        deterministic and does not scale with duration.
+        """
+
+        clean_gesture = _clean_touch_gesture(gesture)
+        clean_duration = _clean_touch_duration(duration_ms)
+        item = HostInput(
+            id=f"touch-{self._next_id()}",
+            source=TOUCH_SOURCE,
+            event=_touch_event_text(clean_gesture, clean_duration),
+            gesture=clean_gesture,
         )
         self._queue.put(item)
         return item
@@ -141,6 +171,38 @@ def _clean_build_test_kind(kind: str) -> str:
         allowed = ", ".join(sorted(BUILD_TEST_KINDS))
         raise InputError(f"kind must be one of: {allowed}")
     return cleaned
+
+
+def _clean_touch_gesture(gesture: str) -> str:
+    if not isinstance(gesture, str):
+        raise InputError("gesture must be a string")
+    cleaned = gesture.strip().lower()
+    if cleaned not in TOUCH_GESTURES:
+        allowed = ", ".join(sorted(TOUCH_GESTURES))
+        raise InputError(f"gesture must be one of: {allowed}")
+    return cleaned
+
+
+def _clean_touch_duration(duration_ms: int | float | None) -> int | None:
+    if duration_ms is None:
+        return None
+    if isinstance(duration_ms, bool) or not isinstance(duration_ms, (int, float)):
+        raise InputError("duration_ms must be a number")
+    if not math.isfinite(duration_ms):
+        raise InputError("duration_ms must be a finite number")
+    if duration_ms < 0:
+        raise InputError("duration_ms must not be negative")
+    return min(int(duration_ms), TOUCH_DURATION_MAX_MS)
+
+
+def _touch_event_text(gesture: str, duration_ms: int | None) -> str:
+    if gesture == "hold":
+        if duration_ms is not None:
+            return f"Touch input: a gentle, soothing pet hold for {duration_ms}ms."
+        return "Touch input: a gentle, soothing pet hold."
+    if gesture == "doubletap":
+        return "Touch input: a double-tap play invite."
+    return "Touch input: a quick boop tap to say hello."
 
 
 def _clean_required_text(text: str, *, field: str, max_len: int) -> str:

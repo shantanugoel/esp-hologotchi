@@ -908,5 +908,223 @@ class PetLoopV2aTests(unittest.TestCase):
         self.assertIn('"animation":"alert"', output.getvalue())
 
 
+class PetLoopTouchTests(unittest.TestCase):
+    def test_touch_effect_dispatch_is_gesture_specific(self) -> None:
+        from host.affect import Affect
+        from host.pet_loop import _apply_touch_effects
+
+        hold = Affect(affection=40.0, frustration=80.0)
+        _apply_touch_effects(hold, "hold")
+        self.assertGreater(hold.affection, 40)
+        self.assertLess(hold.frustration, 80)
+
+        lively = Affect(play=20.0, energy=80.0)
+        _apply_touch_effects(lively, "doubletap")
+        self.assertGreater(lively.play, 20)
+
+        tired = Affect(play=20.0, social=20.0, energy=10.0)
+        _apply_touch_effects(tired, "doubletap")
+        # Too tired to accept the play invite: a light boop, not a play spike.
+        self.assertLess(tired.play, 30)
+        self.assertGreater(tired.social, 20)
+
+        tap = Affect(play=20.0, social=20.0)
+        _apply_touch_effects(tap, "tap")
+        self.assertEqual(tap.play, 20.0)
+        self.assertGreater(tap.social, 20)
+
+    def test_touch_counts_as_engagement_and_applies_effect(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+        from host.presence import PresenceTracker
+        from host.state import PetState
+        from host.affect import Affect
+
+        inputs = HostInputQueue()
+        inputs.submit_touch("hold", 1200)
+        tracker = PresenceTracker()
+
+        result = _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=PetState(affect=Affect(affection=40.0, frustration=70.0)),
+            generate=_idle_generator([]),
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1005.0]),
+            input_queue=inputs,
+            presence_tracker=tracker,
+            output=io.StringIO(),
+        )
+
+        # A hold repairs affection and soothes frustration...
+        self.assertGreater(result.affect.affection, 40.0)
+        self.assertLess(result.affect.frustration, 70.0)
+        # ...and resets the "ignored" timer to the moment of the touch.
+        self.assertEqual(tracker.last_interaction, 1005.0)
+
+    def test_touch_while_sleeping_wakes_through_waking_not_chaos(self) -> None:
+        from host.body import BodyModel, BodyState
+        from host.pet_loop import run_pet_loop as _run
+        from host.presence import SignalMailbox
+
+        mailbox = SignalMailbox()
+        mailbox.set_presence("airpods", False, now=0.0)
+        body = BodyModel(state=BodyState.SLEEPING, state_since=900.0, sleep_started_at=900.0)
+        inputs = HostInputQueue()
+        inputs.submit_touch("tap")
+
+        def fake_generate(prompt: str, config: object) -> BehaviorCommand:
+            del prompt, config
+            return BehaviorCommand(
+                mood="happy", animation="excited", text="yay", alert=False, duration_ms=4000
+            )
+
+        output = io.StringIO()
+        _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1005.0]),
+            input_queue=inputs,
+            signal_mailbox=mailbox,
+            body=body,
+            output=output,
+        )
+
+        # Touch interrupts sleep, but through a gentle waking transition rather
+        # than snapping straight to "excited".
+        self.assertIs(body.state, BodyState.WAKING)
+        self.assertEqual(body.last_touch_at, 1005.0)
+        self.assertNotIn('"animation":"excited"', output.getvalue())
+
+    def test_doubletap_play_invite_offers_play_when_engaged(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+        from host.state import PetState
+        from host.affect import Affect
+
+        inputs = HostInputQueue()
+        inputs.submit_touch("doubletap")
+        prompts: list[str] = []
+
+        _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=PetState(affect=Affect(energy=80.0, sleepiness=10.0)),
+            generate=_idle_generator(prompts),
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1005.0]),
+            input_queue=inputs,
+            output=io.StringIO(),
+        )
+
+        # The play-invite moment reaches the prompt and "play" is an allowed option.
+        self.assertIn("play invite", prompts[1])
+        body_block = prompts[1].split("Allowed animations:", 1)[1]
+        self.assertIn("- play", body_block)
+
+    def test_alert_then_hold_soothes(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+        from host.state import PetState
+        from host.affect import Affect
+
+        inputs = HostInputQueue()
+        inputs.submit_important_alert("meeting starts now")
+        inputs.submit_touch("hold", 1500)
+
+        result = _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=3, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=PetState(affect=Affect(affection=40.0, frustration=60.0)),
+            generate=_idle_generator([]),
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1005.0, 1010.0]),
+            input_queue=inputs,
+            output=io.StringIO(),
+        )
+
+        # Holding through the alert calms Mochi and repairs affection.
+        self.assertLess(result.affect.frustration, 60.0)
+        self.assertGreater(result.affect.affection, 40.0)
+
+    def test_touch_captures_affection_memory(self) -> None:
+        from host.memory import MemoryStore
+        from host.pet_loop import run_pet_loop as _run
+        from host.state import PetState
+
+        clock = SeqClock([1000.0, 1005.0])
+        memory = MemoryStore(now=clock)
+        self.addCleanup(memory.close)
+
+        inputs = HostInputQueue()
+        inputs.submit_touch("hold", 1200)
+
+        _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            state=PetState(),
+            generate=_idle_generator([]),
+            sleep=lambda _: None,
+            now=clock,
+            input_queue=inputs,
+            memory=memory,
+            output=io.StringIO(),
+        )
+
+        self.assertGreaterEqual(memory.count_by(tag="affection"), 1)
+        self.assertGreaterEqual(memory.count_by(tag="touch"), 1)
+
+
+    def test_touch_while_sleeping_softens_proposed_awake_excited(self) -> None:
+        from host.body import BodyModel, BodyState
+        from host.pet_loop import run_pet_loop as _run
+        from host.presence import SignalMailbox
+        from host.protocol import BehaviorProposal
+
+        mailbox = SignalMailbox()
+        mailbox.set_presence("airpods", False, now=0.0)
+        body = BodyModel(state=BodyState.SLEEPING, state_since=900.0, sleep_started_at=900.0)
+        inputs = HostInputQueue()
+        inputs.submit_touch("tap")
+
+        def fake_generate(prompt: str, config: object) -> BehaviorProposal:
+            del prompt, config
+            return BehaviorProposal(
+                behavior=BehaviorCommand(
+                    mood="happy", animation="excited", text="yay", alert=False, duration_ms=4000
+                ),
+                body_state="awake",
+            )
+
+        output = io.StringIO()
+        _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1005.0]),
+            input_queue=inputs,
+            signal_mailbox=mailbox,
+            body=body,
+            output=output,
+        )
+
+        # Even though the model proposed awake + excited, a sleeping touch is
+        # softened to a gentle waking beat.
+        self.assertIs(body.state, BodyState.WAKING)
+        self.assertNotIn('"animation":"excited"', output.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

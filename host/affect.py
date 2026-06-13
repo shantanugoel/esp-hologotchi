@@ -222,6 +222,46 @@ class Affect:
         self.loneliness = _drop(self.loneliness, 18.0)
         self.energy = _rise(self.energy, 6.0)
 
+    # -- Touch-driven events (physical contact) -----------------------------
+    # Touch is real engagement; each gesture replenishes the existing drives and
+    # relationship fields. No new ad-hoc state is introduced.
+
+    def register_boop(self) -> None:
+        """A quick tap: a light hello/boop. Gentle attention and a small wake-up."""
+        self.social = _rise(self.social, 18.0)
+        self.stimulation = _rise(self.stimulation, 14.0)
+        self.energy = _rise(self.energy, 6.0)
+        self.loneliness = _drop(self.loneliness, 12.0)
+        self.affection = _rise(self.affection, 3.0)
+        self.trust = _rise(self.trust, 1.0)
+
+    def register_pet(self) -> None:
+        """A sustained hold: petting and soothing. Repairs affection and calms arousal.
+
+        This is also the alert-acknowledgment path: a hold during an alert eases
+        frustration and loneliness so Mochi settles instead of staying keyed up.
+        Stimulation is a *satisfaction* drive (high = met), so a hold gently meets
+        the contact need rather than lowering it — petting must not make Mochi
+        restless.
+        """
+        self.social = _rise(self.social, 25.0)
+        self.affection = _rise(self.affection, 12.0)
+        self.trust = _rise(self.trust, 5.0)
+        self.loneliness = _drop(self.loneliness, 25.0)
+        self.frustration = _drop(self.frustration, 25.0)
+        self.stimulation = _rise(self.stimulation, 4.0)
+        self.rest = _rise(self.rest, 6.0)
+        self.bond = _rise(self.bond, 2.0)
+
+    def register_play_invite(self) -> None:
+        """An accepted doubletap play invite: replenish play and stimulation."""
+        self.play = _rise(self.play, 26.0)
+        self.stimulation = _rise(self.stimulation, 16.0)
+        self.social = _rise(self.social, 15.0)
+        self.energy = _drop(self.energy, 6.0)
+        self.loneliness = _drop(self.loneliness, 15.0)
+        self.affection = _rise(self.affection, 3.0)
+
     # -- Behavior-driven events (what Mochi just chose) ---------------------
 
     def register_behavior(self, animation: str) -> None:

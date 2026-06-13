@@ -103,6 +103,54 @@ class ControlServerTests(unittest.TestCase):
         self.assertEqual(item.source, "important_alert")
         self.assertEqual(item.event, "Important alert: calendar event starts now")
 
+    def test_post_touch_enqueues_touch_input(self) -> None:
+        inputs = HostInputQueue()
+        logs = io.StringIO()
+        with ControlServer(
+            ControlServerConfig(port=0), inputs, log_output=logs
+        ) as server:
+            status, body = _request_json(
+                f"http://{server.address[0]}:{server.address[1]}/touch",
+                method="POST",
+                payload={"gesture": "hold", "duration_ms": 1200},
+            )
+
+            item = inputs.wait(0.5)
+
+        self.assertEqual(status, 202)
+        self.assertEqual(body, {"ok": True, "id": "touch-1"})
+        self.assertIsNotNone(item)
+        assert item is not None
+        self.assertEqual(item.source, "touch")
+        self.assertEqual(item.gesture, "hold")
+        self.assertIn("1200ms", item.event)
+        self.assertIn('"source":"touch"', logs.getvalue())
+
+    def test_post_touch_rejects_unknown_gesture(self) -> None:
+        inputs = HostInputQueue()
+        with ControlServer(ControlServerConfig(port=0), inputs) as server:
+            status, body = _request_json(
+                f"http://{server.address[0]}:{server.address[1]}/touch",
+                method="POST",
+                payload={"gesture": "swipe"},
+            )
+
+        self.assertEqual(status, 400)
+        self.assertFalse(body["ok"])
+        self.assertIn("gesture must be one of", body["error"])
+
+    def test_post_touch_rejects_non_numeric_duration(self) -> None:
+        inputs = HostInputQueue()
+        with ControlServer(ControlServerConfig(port=0), inputs) as server:
+            status, body = _request_json(
+                f"http://{server.address[0]}:{server.address[1]}/touch",
+                method="POST",
+                payload={"gesture": "hold", "duration_ms": "long"},
+            )
+
+        self.assertEqual(status, 400)
+        self.assertIn("duration_ms", body["error"])
+
     def test_post_message_rejects_empty_text(self) -> None:
         inputs = HostInputQueue()
         logs = io.StringIO()

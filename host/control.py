@@ -22,7 +22,7 @@ from .presence import (
 MAX_REQUEST_BYTES = 4096
 FOREGROUND_APP_MAX_LEN = 64
 PRESENCE_SOURCE_MAX_LEN = 32
-INPUT_PATHS = frozenset({"/message", "/build", "/test", "/alert"})
+INPUT_PATHS = frozenset({"/message", "/build", "/test", "/alert", "/touch"})
 
 
 class FeatureDisabledError(RuntimeError):
@@ -190,6 +190,17 @@ class _ControlHandler(BaseHTTPRequestHandler):
             if not isinstance(text, str):
                 raise InputError("text must be a string")
             return self.input_queue.submit_important_alert(text)
+
+        if path == "/touch":
+            gesture = payload.get("gesture")
+            if not isinstance(gesture, str):
+                raise InputError("gesture must be a string")
+            duration = payload.get("duration_ms")
+            if duration is not None and (
+                isinstance(duration, bool) or not isinstance(duration, (int, float))
+            ):
+                raise InputError("duration_ms must be a number")
+            return self.input_queue.submit_touch(gesture, duration)
 
         raise ValueError("unsupported input path")
 

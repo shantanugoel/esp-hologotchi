@@ -177,6 +177,21 @@ curl -X POST http://127.0.0.1:8787/alert \
   -d '{"text":"calendar event starts now"}'
 ```
 
+Send a physical touch gesture (V2b validates touch *meaning* over HTTP before any
+touch hardware exists). Valid gestures are `tap`, `hold`, and `doubletap`;
+`duration_ms` is optional and only meaningful for a `hold`:
+
+```bash
+curl -X POST http://127.0.0.1:8787/touch \
+  -H 'Content-Type: application/json' \
+  -d '{"gesture":"hold","duration_ms":1200}'
+```
+
+A `tap` is a light boop, a `hold` is a soothing pet (repairs affection, calms an
+alert), and a `doubletap` is a play invite Mochi takes up when it has the energy.
+Touch counts as engagement, wakes Mochi from a nap through a gentle waking
+transition, and tags salient affection moments in memory.
+
 The HTTP response includes the queued input ID:
 
 ```json
@@ -192,7 +207,7 @@ so direct messages are distinguishable from regular idle loop updates:
 ```
 
 Build and test result IDs use `build-*` and `test-*`; important alerts use
-`alert-*`.
+`alert-*`; touch gestures use `touch-*`.
 
 The input endpoint binds to localhost by default. To accept inputs from other
 machines on the local network, bind it explicitly:
@@ -214,7 +229,7 @@ Useful flags:
 - `--loop` — keep in-memory pet state and send repeated behavior updates
 - `--interval-seconds 6` — control the loop cadence
 - `--max-cycles 10` — run a bounded loop for demos or tests
-- `--serve` — expose `POST /message`, `/build`, `/test`, and `/alert` while the pet loop is running
+- `--serve` — expose `POST /message`, `/build`, `/test`, `/alert`, and `/touch` while the pet loop is running
 - `--message-bind-host 127.0.0.1` — bind host for the message endpoint; use `0.0.0.0` for LAN clients
 - `--message-port 8787` — bind port for the message endpoint
 - `--memory-db PATH` — where Mochi keeps its local SQLite memory (defaults under `$XDG_STATE_HOME/hologotchi/`)

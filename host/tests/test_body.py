@@ -140,6 +140,47 @@ class BodyWakeTests(unittest.TestCase):
         behavior, state = body.resolve(situation, _behavior("happy"), "waking", now=1005.0)
         self.assertIs(state, BodyState.WAKING)
 
+    def test_touch_wake_cannot_snap_straight_to_awake(self) -> None:
+        body = BodyModel(
+            state=BodyState.SLEEPING, state_since=1000.0, sleep_started_at=1000.0, config=_config()
+        )
+        situation = body.advance(
+            1005.0,
+            affect=_awake_affect(),
+            report=_report(PresenceState.ENGAGED),
+            event_source="touch",
+            local_hour=14,
+        )
+        self.assertTrue(situation.wake_trigger)
+        # A touch interrupts sleep but must pass through waking, never jump to a
+        # fully awake state even if the model proposes it.
+        self.assertNotIn(BodyState.AWAKE, situation.allowed_states)
+        behavior, state = body.resolve(
+            situation, _behavior("excited"), "awake", now=1005.0
+        )
+        self.assertIs(state, BodyState.WAKING)
+        self.assertIn(behavior.animation, ("sleepy", "blink", "look_around", "idle"))
+
+    def test_touch_wake_after_long_away_still_wakes_gently(self) -> None:
+        # A tap that ends a long away period sets returned_from_away on the same
+        # tick, but active contact must still wake through waking, not perk up.
+        body = BodyModel(
+            state=BodyState.SLEEPING, state_since=1000.0, sleep_started_at=1000.0, config=_config()
+        )
+        situation = body.advance(
+            1005.0,
+            affect=_awake_affect(),
+            report=_report(
+                PresenceState.ENGAGED, returned_from_away=True, away_before_return=3000.0
+            ),
+            event_source="touch",
+            local_hour=14,
+        )
+        self.assertTrue(situation.wake_trigger)
+        self.assertNotIn(BodyState.AWAKE, situation.allowed_states)
+        _, state = body.resolve(situation, _behavior("excited"), "awake", now=1005.0)
+        self.assertIs(state, BodyState.WAKING)
+
     def test_waking_auto_finishes_to_awake(self) -> None:
         body = BodyModel(state=BodyState.WAKING, state_since=1000.0, config=_config())
         situation = body.advance(
