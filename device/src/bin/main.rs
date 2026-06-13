@@ -12,28 +12,34 @@
 //! over a small TCP control socket.
 
 use core::cell::RefCell;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use critical_section::Mutex;
 use embassy_executor::Spawner;
-use embassy_net::tcp::TcpSocket;
+use embassy_futures::select::{Either, select};
+use embassy_net::tcp::{TcpReader, TcpSocket, TcpWriter};
 use embassy_net::{Config as NetConfig, Runner, Stack, StackResources};
-use embassy_time::{Duration, Ticker, Timer};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::{Channel, TrySendError};
+use embassy_time::{Duration, Instant, Ticker, Timer};
+use embedded_io_async::Write as _;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{Level, Output, OutputConfig};
+use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull};
 use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::rng::Rng;
 use esp_hal::spi::Mode;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
-use esp_hologotchi::behavior::{self, BehaviorUpdate};
+use esp_hologotchi::behavior::{self, Animation, BehaviorUpdate, Mood};
 use esp_hologotchi::display::{Orientation, Ssd1351};
 use esp_hologotchi::render::Scene;
 use esp_radio::wifi::sta::StationConfig;
 use esp_radio::wifi::{
     self, AuthenticationMethod, Config as WifiConfig, ControllerConfig, WifiController,
 };
+use hologotchi_touch::{Gesture, TouchClassifier, encode_input_frame};
 use log::{info, warn};
 use static_cell::StaticCell;
 
@@ -53,6 +59,22 @@ const NET_STACK_SOCKETS: usize = 4;
 const WIFI_RETRY_SECS: u64 = 3;
 const SOCKET_TIMEOUT_SECS: u64 = 30;
 
+/// TTP223 capacitive touch input pin. GPIO5 is the default; build with
+/// `--features touch-gpio10` to use the documented backup. Both avoid the OLED
+/// pins (GPIO2/3/4/6/7) and the ESP32-C3 strapping pins (GPIO2/8/9).
+#[cfg(not(feature = "touch-gpio10"))]
+const TOUCH_GPIO: u8 = 5;
+#[cfg(feature = "touch-gpio10")]
+const TOUCH_GPIO: u8 = 10;
+/// How often the touch pad is sampled. Independent of the 20fps render loop so
+/// gesture timing never disturbs rendering.
+const TOUCH_SAMPLE_MS: u64 = 5;
+/// Bounded device -> host uplink queue. Drops oldest on overflow so a burst of
+/// touches while the host is briefly unavailable can never block sampling.
+const INPUT_QUEUE_LEN: usize = 8;
+/// Length of the local touch acknowledgement played when no host is connected.
+const LOCAL_ACK_DURATION_MS: u32 = 1_200;
+
 type WifiDevice = wifi::Interface<'static>;
 type NetRunner = Runner<'static, WifiDevice>;
 
@@ -62,6 +84,12 @@ static SOCKET_RX_BUF: StaticCell<[u8; SOCKET_BUF_LEN]> = StaticCell::new();
 static SOCKET_TX_BUF: StaticCell<[u8; SOCKET_BUF_LEN]> = StaticCell::new();
 static FRAME_BUF: StaticCell<[u8; behavior::FRAME_CAPACITY]> = StaticCell::new();
 static READ_BUF: StaticCell<[u8; READ_BUF_LEN]> = StaticCell::new();
+/// Classified touch gestures waiting to be written to the host as `input` frames.
+static INPUT_CHANNEL: Channel<CriticalSectionRawMutex, Gesture, INPUT_QUEUE_LEN> = Channel::new();
+/// Whether a host control connection is currently serviced. Touch falls back to a
+/// bounded local acknowledgement while this is false. The ESP32-C3 has no atomic
+/// read-modify-write, so this is only ever loaded/stored.
+static HOST_CONNECTED: AtomicBool = AtomicBool::new(false);
 
 struct WifiCredentials {
     ssid: &'static str,
@@ -114,6 +142,17 @@ async fn main(spawner: Spawner) -> ! {
     }
     info!("display initialized");
     spawner.spawn(render_task(display).unwrap());
+
+    // TTP223 capacitive touch (active-high momentary). A pull-down keeps the line
+    // defined-low if the pad is ever disconnected; the module drives it high on
+    // contact. Sampling runs in its own task so touch never stalls rendering.
+    let touch_config = InputConfig::default().with_pull(Pull::Down);
+    #[cfg(not(feature = "touch-gpio10"))]
+    let touch_input = Input::new(peripherals.GPIO5, touch_config);
+    #[cfg(feature = "touch-gpio10")]
+    let touch_input = Input::new(peripherals.GPIO10, touch_config);
+    spawner.spawn(touch_task(touch_input).unwrap());
+    info!("touch input enabled on GPIO{}", TOUCH_GPIO);
 
     let control_port = control_port();
 
@@ -242,15 +281,40 @@ async fn behavior_server_task(stack: Stack<'static>, control_port: u16) {
 
         let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
         socket.set_timeout(Some(Duration::from_secs(SOCKET_TIMEOUT_SECS)));
+        // Send small uplink frames promptly instead of coalescing them.
+        socket.set_nagle_enabled(false);
 
         match socket.accept(control_port).await {
             Ok(()) => {
                 info!("host control connection accepted");
-                if let Err(err) = read_control_stream(&mut socket, frame, read_buf).await {
-                    warn!("control connection ended with error: {:?}", err);
-                } else {
-                    info!("host control connection closed");
+                // Drop any gestures captured while disconnected: per PLAN_v2 they
+                // are not replayed when the host returns.
+                INPUT_CHANNEL.clear();
+                HOST_CONNECTED.store(true, Ordering::Release);
+
+                {
+                    // Read downlink behavior frames and write uplink input frames
+                    // concurrently on the one connection without either starving
+                    // the other.
+                    let (mut reader, mut writer) = socket.split();
+                    match select(
+                        read_control_stream(&mut reader, frame, read_buf),
+                        write_input_stream(&mut writer),
+                    )
+                    .await
+                    {
+                        Either::First(Ok(())) => info!("host control connection closed"),
+                        Either::First(Err(err)) => {
+                            warn!("control read ended with error: {:?}", err)
+                        }
+                        Either::Second(Ok(())) => {}
+                        Either::Second(Err(err)) => {
+                            warn!("control write ended with error: {:?}", err)
+                        }
+                    }
                 }
+
+                HOST_CONNECTED.store(false, Ordering::Release);
             }
             Err(err) => {
                 warn!("control accept failed: {:?}", err);
@@ -261,7 +325,7 @@ async fn behavior_server_task(stack: Stack<'static>, control_port: u16) {
 }
 
 async fn read_control_stream(
-    socket: &mut TcpSocket<'_>,
+    reader: &mut TcpReader<'_>,
     frame: &mut [u8; behavior::FRAME_CAPACITY],
     read_buf: &mut [u8; READ_BUF_LEN],
 ) -> Result<(), embassy_net::tcp::Error> {
@@ -269,7 +333,7 @@ async fn read_control_stream(
     let mut dropping_line = false;
 
     loop {
-        let count = socket.read(read_buf).await?;
+        let count = reader.read(read_buf).await?;
         if count == 0 {
             return Ok(());
         }
@@ -313,6 +377,76 @@ fn handle_frame(frame: &[u8]) {
         Err(err) => {
             warn!("ignored malformed behavior frame: {:?}", err);
         }
+    }
+}
+
+/// Drain classified gestures and write them to the host as newline-delimited
+/// `input` frames. Returns only on a write error, which ends the connection so
+/// the server loop can re-accept.
+async fn write_input_stream(writer: &mut TcpWriter<'_>) -> Result<(), embassy_net::tcp::Error> {
+    loop {
+        let gesture = INPUT_CHANNEL.receive().await;
+        if let Some(line) = encode_input_frame(gesture)
+            && let Err(err) = writer.write_all(line.as_bytes()).await
+        {
+            // The link died with this gesture already dequeued: acknowledge it
+            // locally so the touch is not silently lost, then end the connection
+            // so the server loop can re-accept.
+            queue_behavior_update(local_ack(gesture));
+            return Err(err);
+        }
+    }
+}
+
+/// Sample the TTP223 pad at a fixed cadence, classify gestures, and either queue
+/// them for the host or, when no host is connected, play a brief local-only
+/// acknowledgement. Nothing durable (mood/memory) is changed on the device.
+#[embassy_executor::task]
+async fn touch_task(input: Input<'static>) {
+    let mut classifier = TouchClassifier::new();
+    let mut ticker = Ticker::every(Duration::from_millis(TOUCH_SAMPLE_MS));
+
+    loop {
+        let pressed = input.is_high();
+        let now_ms = Instant::now().as_millis();
+        if let Some(gesture) = classifier.update(pressed, now_ms) {
+            info!("touch gesture: {:?}", gesture);
+            // Either uplink the gesture or play a local-only acknowledgement, never
+            // both: a disconnected touch must not be queued (it would be cleared on
+            // reconnect and never replayed), and a connected one is the host's to
+            // interpret.
+            if HOST_CONNECTED.load(Ordering::Acquire) {
+                enqueue_input(gesture);
+            } else {
+                queue_behavior_update(local_ack(gesture));
+            }
+        }
+        ticker.next().await;
+    }
+}
+
+/// Push a gesture onto the bounded uplink queue, dropping the oldest entry when
+/// it is full so the newest contact always wins and sampling never blocks.
+fn enqueue_input(gesture: Gesture) {
+    if let Err(TrySendError::Full(gesture)) = INPUT_CHANNEL.try_send(gesture) {
+        let _ = INPUT_CHANNEL.try_receive();
+        let _ = INPUT_CHANNEL.try_send(gesture);
+    }
+}
+
+/// A short, host-independent reaction so a touch still feels acknowledged while
+/// the host link is down. Uses only the existing idle-capable animations.
+fn local_ack(gesture: Gesture) -> BehaviorUpdate {
+    let (mood, animation) = match gesture {
+        Gesture::DoubleTap => (Mood::Curious, Animation::LookAround),
+        Gesture::Tap | Gesture::Hold { .. } => (Mood::Calm, Animation::Blink),
+    };
+    BehaviorUpdate {
+        mood,
+        animation,
+        text: None,
+        alert: false,
+        duration_ms: LOCAL_ACK_DURATION_MS,
     }
 }
 

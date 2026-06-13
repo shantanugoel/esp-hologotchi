@@ -1,0 +1,18 @@
+[package]
+edition = "2024"
+name    = "hologotchi-touch"
+version = "0.1.0"
+
+# Pure, dependency-free gesture classifier. It is `no_std` for the firmware build
+# and `std` under `cargo test` so the deterministic logic can be unit-tested on
+# the host (the firmware crate itself cannot build for the host because of its
+# esp-hal dependencies). Run the tests from the repo root so the device-specific
+# `.cargo/config.toml` (riscv target + build-std) is not picked up:
+#
+#   cargo test --manifest-path device/touch/Cargo.toml
+[lib]
+name = "hologotchi_touch"
+path = "src/lib.rs"
+
+[dependencies]
+heapless = "0.9.3"

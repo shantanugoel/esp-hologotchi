@@ -17,6 +17,13 @@
             "top": 12,
             "left": 281,
             "attrs": {}
+        },
+        {
+            "type": "wokwi-pushbutton",
+            "id": "touch",
+            "top": 150,
+            "left": 280,
+            "attrs": { "color": "green", "label": "TTP223" }
         }
     ],
     "connections": [
@@ -72,6 +79,18 @@
             "oled:RST",
             "esp:2",
             "violet",
+            []
+        ],
+        [
+            "touch:1.l",
+            "esp:3V3.1",
+            "red",
+            []
+        ],
+        [
+            "touch:2.l",
+            "esp:5",
+            "green",
             []
         ]
     ],

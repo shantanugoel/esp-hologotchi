@@ -8,7 +8,7 @@ from typing import Callable, TextIO
 
 from .affect import Affect
 from .body import BodyModel, BodySituation, BodyState
-from .inputs import HostInput, HostInputQueue, TOUCH_SOURCE
+from .inputs import HostInput, HostInputQueue, InputError, TOUCH_SOURCE
 from .memory import KIND_EPISODIC, MemoryStore
 from .ollama import OllamaConfig, OllamaError, generate_proposal
 from .presence import PresenceReport, PresenceSignals, PresenceTracker, SignalMailbox
@@ -121,7 +121,16 @@ def run_pet_loop(
     )
     cycles = 0
 
-    client = None if dry_run else BehaviorClient(_require_endpoint(endpoint))
+    touch_sink = (
+        _make_uplink_touch_sink(input_queue, err, log_events)
+        if input_queue is not None
+        else None
+    )
+    client = (
+        None
+        if dry_run
+        else BehaviorClient(_require_endpoint(endpoint), on_touch=touch_sink)
+    )
     keepalive = client.send_keepalive if client is not None else _noop
     try:
         while loop_config.max_cycles is None or cycles < loop_config.max_cycles:
@@ -245,6 +254,42 @@ def run_pet_loop(
 
 def _noop() -> None:
     return None
+
+
+def _make_uplink_touch_sink(
+    input_queue: HostInputQueue, err: TextIO, log_events: bool
+) -> Callable[[str, "int | None"], None]:
+    """Build the callback the transport reader uses for device touch uplink.
+
+    Firmware-detected touches arrive on the device -> host channel and are fed
+    into the same queue as HTTP ``/touch`` posts, so the loop reacts identically
+    whichever path delivered the gesture.
+    """
+
+    def sink(gesture: str, duration_ms: "int | None") -> None:
+        try:
+            item = input_queue.submit_touch(gesture, duration_ms)
+        except InputError:
+            return
+        if log_events:
+            print(
+                json.dumps(
+                    {
+                        "type": "input",
+                        "status": "accepted",
+                        "id": item.id,
+                        "source": item.source,
+                        "transport": "tcp",
+                        "event": item.event,
+                    },
+                    separators=(",", ":"),
+                    ensure_ascii=True,
+                ),
+                file=err,
+                flush=True,
+            )
+
+    return sink
 
 
 def _unpack_proposal(

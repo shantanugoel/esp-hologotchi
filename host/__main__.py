@@ -261,7 +261,10 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.loop:
-        input_queue = HostInputQueue() if args.serve else None
+        # The input queue is always present so firmware touch uplink can reach
+        # the loop over the device connection; the HTTP control server is only
+        # started when --serve is requested.
+        input_queue = HostInputQueue()
         memory = None if args.no_memory else _open_memory(args.memory_db)
         signal_mailbox = SignalMailbox(away_idle_seconds=args.away_idle_seconds)
         presence_tracker = PresenceTracker(
@@ -281,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
                 memory=memory,
                 signal_mailbox=signal_mailbox,
             )
-            if input_queue is not None
+            if args.serve
             else None
         )
         try:

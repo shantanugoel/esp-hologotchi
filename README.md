@@ -22,6 +22,9 @@ The repository currently includes:
 - a host-only psychology layer: real-time needs/relationship decay, an
   away/ignoring/engaged presence state machine, and local SQLite memory with
   inspect/forget/reset/pause controls
+- physical **touch** via an on-device TTP223 pad: the firmware classifies
+  tap/hold/doubletap and streams them to the host over a device → host uplink on
+  the same TCP connection (with an HTTP `/touch` fallback for testing)
 
 See:
 
@@ -107,6 +110,50 @@ Device Wi-Fi and control-socket settings are kept in a **local, git-ignored TOML
 > [!IMPORTANT]
 > `device/hologotchi.local.toml` is read by `device/build.rs` at build time. If you change it, rebuild and reflash the firmware.
 
+## Touch hardware (TTP223)
+
+Mochi's first physical input is a **TTP223 capacitive touch module**. The
+firmware samples it, classifies `tap` / `hold` / `doubletap` with a deterministic
+debounced state machine, and sends each gesture to the host as a device → host
+`input` frame on the same TCP connection used for behavior updates.
+
+Wiring (default pin `GPIO5`, which avoids the OLED pins GPIO2/3/4/6/7 and the
+ESP32-C3 strapping pins GPIO2/8/9):
+
+```text
+TTP223 VCC -> ESP32-C3 3V3
+TTP223 GND -> ESP32-C3 GND
+TTP223 OUT -> ESP32-C3 GPIO5   (active-high momentary)
+```
+
+Notes:
+
+- Power the module from **3.3V** so the OUT level is safe for the ESP32-C3.
+- The OUT polarity is the TTP223 default: **active-high momentary**. The firmware
+  configures an internal pull-down so the line reads low if the pad is ever
+  disconnected.
+- To use the documented backup pin `GPIO10` instead, build with the
+  `touch-gpio10` Cargo feature: `cargo build --features touch-gpio10`.
+- Confirm your exact board's pinout before committing a pad placement; boards
+  vary on straps, onboard LEDs, and USB/JTAG routing.
+
+The uplink frames are minimal, newline-delimited JSON (the host timestamps them
+on receipt):
+
+```json
+{"v":1,"kind":"input","source":"touch","gesture":"tap"}
+{"v":1,"kind":"input","source":"touch","gesture":"hold","duration_ms":960}
+{"v":1,"kind":"input","source":"touch","gesture":"doubletap"}
+```
+
+If the host link is down when you touch the cube, the device plays a brief
+local-only acknowledgement (a blink or look-around) and nothing durable changes;
+those touches are not replayed when the host reconnects.
+
+The Wokwi diagram (`device/diagram.json`) includes a pushbutton on `GPIO5` that
+emulates the active-high TTP223, so tap/hold/doubletap can be exercised in
+simulation.
+
 ## Host setup with uv
 
 The host currently uses only the Python standard library at runtime, but a root `pyproject.toml` is included so `uv` can create an environment and install the local CLI cleanly.
@@ -177,8 +224,11 @@ curl -X POST http://127.0.0.1:8787/alert \
   -d '{"text":"calendar event starts now"}'
 ```
 
-Send a physical touch gesture (V2b validates touch *meaning* over HTTP before any
-touch hardware exists). Valid gestures are `tap`, `hold`, and `doubletap`;
+Mochi feels physical touch through a **TTP223 capacitive pad on the device** (see
+[Touch hardware](#touch-hardware-ttp223) below): the firmware classifies the
+gesture and sends it to the host over the existing connection automatically. The
+same `POST /touch` endpoint stays available for testing without hardware and for
+future remote-touch sources. Valid gestures are `tap`, `hold`, and `doubletap`;
 `duration_ms` is optional and only meaningful for a `hold`:
 
 ```bash
@@ -190,7 +240,8 @@ curl -X POST http://127.0.0.1:8787/touch \
 A `tap` is a light boop, a `hold` is a soothing pet (repairs affection, calms an
 alert), and a `doubletap` is a play invite Mochi takes up when it has the energy.
 Touch counts as engagement, wakes Mochi from a nap through a gentle waking
-transition, and tags salient affection moments in memory.
+transition, and tags salient affection moments in memory. Whether a gesture
+arrives from the device or from HTTP, the host reacts identically.
 
 The HTTP response includes the queued input ID:
 
@@ -291,6 +342,14 @@ cargo build
 cargo clippy --all-features --workspace -- -D warnings
 ```
 
+The pure gesture classifier (`device/touch`) has host-runnable unit tests. Run
+them from the repository root so the device's `riscv` cargo config is not picked
+up:
+
+```bash
+cargo test --manifest-path device/touch/Cargo.toml
+```
+
 ### Host
 
 Run from the repository root:
@@ -302,5 +361,7 @@ uv run python -m unittest discover -s host/tests -t .
 ## Notes
 
 - Runtime control is **Wi-Fi only** for V1. USB is for power/flashing, not runtime commands.
-- The device is the **TCP server**; the host connects to the device by IP/hostname.
+- The device is the **TCP server**; the host connects to the device by IP/hostname. The
+  connection is bidirectional: behavior frames flow host → device and touch `input`
+  frames flow device → host on the same socket.
 - The renderer is designed to stay `no_std` friendly and predictable on the ESP32-C3.

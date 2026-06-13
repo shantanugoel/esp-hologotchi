@@ -8,7 +8,18 @@ version      = "0.1.0"
 name = "esp-hologotchi"
 path = "./src/bin/main.rs"
 
+[workspace]
+members = ["touch"]
+
+[features]
+# Default touch input is GPIO5. Build with `--features touch-gpio10` to use the
+# documented backup pin instead (see `src/bin/main.rs`).
+default = []
+touch-gpio10 = []
+
 [dependencies]
+hologotchi-touch = { path = "touch" }
+
 esp-hal = { version = "~1.1.0", features = ["esp32c3", "log-04", "unstable"] }
 
 embedded-graphics = "0.8.2"
@@ -46,6 +57,8 @@ esp-println = { version = "0.17.0", features = ["esp32c3", "log-04"] }
 # for more networking protocol support see https://crates.io/crates/edge-net
 embassy-executor = { version = "0.10.0", features = ["log"] }
 embassy-time = { version = "0.5.0", features = ["log"] }
+embassy-sync = "0.8.0"
+embassy-futures = "0.1.2"
 esp-radio = { version = "0.18.0", features = [
   "esp-alloc",
   "esp32c3",
