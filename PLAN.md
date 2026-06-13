@@ -493,56 +493,6 @@ The first useful animation set is enough:
      versioned schema, and thread-safe access.
    - the device firmware and wire protocol are unchanged for this phase.
 
-10. **Device → host uplink + cube "boop" (first physical input)** — optional
-    hardware expansion; deliberately revisits the current one-way wire rule.
-
-    The single biggest change for *any* on-device input: today the wire protocol is
-    **one-way (host → device)** — the device only receives behavior frames and never
-    transmits. A physical sensor requires a small **device → host uplink**.
-
-    - keep the existing downlink `behavior` frame exactly as-is.
-    - add one new versioned uplink message family on the *same* single TCP
-      connection (one transport, one connection), e.g.
-      `{"v":1,"kind":"input","source":"touch","value":1,"ms":1234}`.
-    - the host reads uplink frames and feeds them into the same input queue that
-      `/message`, `/build`, `/test`, and `/alert` already use, so Phase 9's brain
-      handles them with no special casing.
-    - firmware stays bounded: fixed buffers, debounced, rate-limited; malformed
-      uplink never blocks rendering.
-
-    First sensor — a cube **"boop"/touch**: petting Mochi replenishes
-    `social`/`affection` and triggers happy/play in character. It is the
-    highest-delight, lowest-data physical input. Hardware note: the **ESP32-C3 has no
-    capacitive-touch peripheral** (only ESP32 / S2 / S3 do), so touch means an
-    external touch IC (TTP223, or MPR121 over I2C) or a simple cap-pad/button on a
-    GPIO.
-
-11. **Richer sensing & embodiment (incl. the voice question)** — optional, later;
-    ordered by value-to-cost.
-
-    Most of these need only the Phase 10 uplink; a couple force a hardware rethink.
-
-    - **ambient light (I2C, e.g. BH1750/VEML7700):** day/night awareness and "lights
-      off → go to sleep." Cheap, tiny data, large life-like payoff.
-    - **presence (PIR) and/or accelerometer (I2C):** "you left the room"; "don't
-      shake the cube." Cheap and fun.
-    - **voice — keep two things separate:**
-      - *voice input:* prefer the **host computer's own microphone + speech-to-text**
-        (push-to-talk or a host-side wake word). This needs **no device hardware**,
-        keeps the C3 free, and fits "the computer is the brain." An on-*device* mic
-        (I2S) with streaming or wake-word is far heavier and stays out of scope per
-        AGENTS.md.
-      - *sound output:* a tiny speaker/buzzer for borks/boops is delightful but adds
-        BOM and conflicts with the current "no on-device audio" rule — make it a
-        deliberate, separate decision.
-    - **MCU note:** light / PIR / touch-IC / accelerometer all fit the ESP32-C3 over
-      GPIO/I2C with the Phase 10 uplink. **On-device audio (mic or speaker) is the
-      realistic trigger to move to ESP32-S3** (more RAM/CPU, and S3 also brings native
-      capacitive touch). Until audio actually lives on the device, the C3 stays fine.
-
-    Guardrail: every physical input still flows through the host brain. The device
-    senses and renders; it never decides. This preserves "the host is the brain."
-
 ## Achieved Baseline
 
 The initial useful product baseline is in place when:
@@ -565,7 +515,3 @@ The initial useful product baseline is in place when:
 - on-device audio
 - on-device model inference
 - broad future architecture design before the pet is already fun
-
-These exclusions are intentional. Phases 10–11 above revisit on-device inputs
-(a device→host uplink, cube touch, light/presence/motion) and the voice question
-deliberately, after the host-only Phase 9 brain proves the pet is fun.
