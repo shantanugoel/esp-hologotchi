@@ -263,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.loop:
         input_queue = HostInputQueue() if args.serve else None
         memory = None if args.no_memory else _open_memory(args.memory_db)
-        signal_mailbox = SignalMailbox()
+        signal_mailbox = SignalMailbox(away_idle_seconds=args.away_idle_seconds)
         presence_tracker = PresenceTracker(
             PresenceConfig(
                 engaged_window_seconds=args.engaged_window_seconds,

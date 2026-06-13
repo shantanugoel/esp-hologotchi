@@ -62,6 +62,23 @@ class BehaviorClient:
             f"failed to send behavior to {self.endpoint.host}:{self.endpoint.port}"
         ) from last_error
 
+    def send_keepalive(self) -> None:
+        """Best-effort bare-newline keepalive to hold the device socket open.
+
+        The device parses an empty line to ``ParseError::Empty`` and ignores it,
+        so this is a no-op on the firmware side. It only exists to keep the TCP
+        connection alive through long idle/nap waits that would otherwise exceed
+        the device's inactivity timeout. Failures are swallowed; the next real
+        ``send`` reconnects.
+        """
+
+        if self._sock is None:
+            return
+        try:
+            self._sock.sendall(b"\n")
+        except OSError:
+            self.close()
+
     def close(self) -> None:
         if self._sock is None:
             return

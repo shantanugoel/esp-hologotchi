@@ -157,3 +157,48 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(payload.count("\n"), 2)
         self.assertIn('"animation":"idle"', payload)
         self.assertIn('"animation":"look_around"', payload)
+
+
+class KeepaliveTests(unittest.TestCase):
+    def test_send_keepalive_writes_bare_newline(self) -> None:
+        fake_socket = _CaptureSocket()
+
+        with mock.patch(
+            "host.transport.socket.create_connection", return_value=fake_socket
+        ):
+            client = BehaviorClient(DeviceEndpoint(host="mochi.local", timeout_seconds=1.0))
+            client.send(
+                BehaviorCommand(
+                    mood="calm", animation="idle", text=None, alert=False, duration_ms=3000
+                )
+            )
+            client.send_keepalive()
+
+        self.assertTrue(fake_socket.sent.endswith(b"\n"))
+        self.assertIn(b'"animation":"idle"', fake_socket.sent)
+        self.assertTrue(fake_socket.sent.endswith(b"}\n\n"))
+
+    def test_send_keepalive_is_noop_before_connecting(self) -> None:
+        client = BehaviorClient(DeviceEndpoint(host="mochi.local", timeout_seconds=1.0))
+        # No socket yet: must not raise or connect.
+        client.send_keepalive()
+
+    def test_send_keepalive_swallows_socket_errors(self) -> None:
+        class _BrokenSocket(_CaptureSocket):
+            def sendall(self, payload: bytes) -> None:
+                raise OSError("broken pipe")
+
+            def close(self) -> None:
+                self.closed = True
+
+        broken = _BrokenSocket()
+        with mock.patch(
+            "host.transport.socket.create_connection", return_value=broken
+        ):
+            client = BehaviorClient(DeviceEndpoint(host="mochi.local", timeout_seconds=1.0))
+            client._sock = broken  # type: ignore[attr-defined]
+            client.send_keepalive()  # must not raise
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -28,6 +28,27 @@ ALLOWED_FIELDS: Final[frozenset[str]] = frozenset(
     {"v", "kind", "mood", "animation", "text", "alert", "duration_ms"}
 )
 
+# Host-only proposal extras. These never reach the device; they are stripped
+# before the behavior frame is sent (see BehaviorProposal.to_behavior_command).
+ALLOWED_BODY_STATES: Final[frozenset[str]] = frozenset(
+    {"awake", "drowsy", "sleeping", "waking"}
+)
+ALLOWED_INTENTS: Final[frozenset[str]] = frozenset(
+    {
+        "stay_asleep",
+        "wake_up",
+        "soft_reunion",
+        "seek_attention",
+        "play",
+        "soothe",
+        "settle",
+        "celebrate",
+        "comfort_self",
+        "alert_owner",
+    }
+)
+PROPOSAL_FIELDS: Final[frozenset[str]] = ALLOWED_FIELDS | {"intent", "body_state"}
+
 
 class ValidationError(ValueError):
     """Raised when model output does not match the V1 behavior contract."""
@@ -56,13 +77,43 @@ class BehaviorCommand:
         return json.dumps(self.payload(), separators=(",", ":"), ensure_ascii=True) + "\n"
 
 
+@dataclass(frozen=True)
+class BehaviorProposal:
+    """A host-only model proposal: a device behavior plus optional continuity hints.
+
+    ``intent`` and ``body_state`` are advisory fields the host uses to drive body
+    continuity. They are validated here but never sent to the device;
+    ``to_behavior_command`` returns the strict frame the firmware expects.
+    """
+
+    behavior: BehaviorCommand
+    intent: str | None = None
+    body_state: str | None = None
+
+    def to_behavior_command(self) -> BehaviorCommand:
+        return self.behavior
+
+
 def parse_behavior_response(response_text: str) -> BehaviorCommand:
     raw = _load_behavior_object(response_text)
+    command, _intent, _body = _validate_behavior_object(raw, allow_proposal=False)
+    return command
 
+
+def parse_behavior_proposal(response_text: str) -> BehaviorProposal:
+    raw = _load_behavior_object(response_text)
+    command, intent, body_state = _validate_behavior_object(raw, allow_proposal=True)
+    return BehaviorProposal(behavior=command, intent=intent, body_state=body_state)
+
+
+def _validate_behavior_object(
+    raw: object, *, allow_proposal: bool
+) -> tuple[BehaviorCommand, str | None, str | None]:
     if not isinstance(raw, dict):
         raise ValidationError("model output must be a single JSON object")
 
-    unexpected = set(raw) - ALLOWED_FIELDS
+    allowed_fields = PROPOSAL_FIELDS if allow_proposal else ALLOWED_FIELDS
+    unexpected = set(raw) - allowed_fields
     if unexpected:
         raise ValidationError(f"unexpected fields in behavior JSON: {sorted(unexpected)}")
 
@@ -81,8 +132,7 @@ def parse_behavior_response(response_text: str) -> BehaviorCommand:
     mood = _require_string(raw, "mood")
     if mood not in ALLOWED_MOODS:
         raise ValidationError(f"unknown mood {mood!r}")
-    expected_mood = ANIMATION_TO_MOOD[animation]
-    mood = expected_mood
+    mood = ANIMATION_TO_MOOD[animation]
 
     alert = raw.get("alert")
     if not isinstance(alert, bool):
@@ -114,13 +164,43 @@ def parse_behavior_response(response_text: str) -> BehaviorCommand:
         if any(not ch.isprintable() for ch in text):
             raise ValidationError("text must use printable characters only")
 
-    return BehaviorCommand(
+    intent: str | None = None
+    body_state: str | None = None
+    if allow_proposal:
+        # An unknown intent is rejected; an unknown body_state is softened to
+        # "no proposal" so the body model falls back to its deterministic default
+        # rather than discarding an otherwise-valid behavior frame.
+        intent = _optional_proposal_field(raw, "intent", ALLOWED_INTENTS, soften=False)
+        body_state = _optional_proposal_field(
+            raw, "body_state", ALLOWED_BODY_STATES, soften=True
+        )
+
+    command = BehaviorCommand(
         mood=mood,
         animation=animation,
         text=text,
         alert=alert,
         duration_ms=duration_ms,
     )
+    return command, intent, body_state
+
+
+def _optional_proposal_field(
+    raw: dict[str, object], field: str, allowed: frozenset[str], *, soften: bool
+) -> str | None:
+    value = raw.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValidationError(f"{field} must be a string when present")
+    cleaned = value.strip().lower()
+    if not cleaned:
+        return None
+    if cleaned not in allowed:
+        if soften:
+            return None
+        raise ValidationError(f"unknown {field} {value!r}")
+    return cleaned
 
 
 def _require_string(raw: dict[str, object], field: str) -> str:

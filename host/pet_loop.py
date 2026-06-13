@@ -7,12 +7,13 @@ from dataclasses import dataclass
 from typing import Callable, TextIO
 
 from .affect import Affect
+from .body import BodyModel, BodySituation, BodyState
 from .inputs import HostInput, HostInputQueue
 from .memory import KIND_EPISODIC, MemoryStore
-from .ollama import OllamaConfig, OllamaError, generate_behavior
+from .ollama import OllamaConfig, OllamaError, generate_proposal
 from .presence import PresenceReport, PresenceSignals, PresenceTracker, SignalMailbox
 from .prompt import load_pet_name
-from .protocol import ANIMATION_TO_MOOD, BehaviorCommand
+from .protocol import ANIMATION_TO_MOOD, BehaviorCommand, BehaviorProposal
 from .reflection import consolidate_memory
 from .state import (
     MESSAGE_APOLOGY,
@@ -21,17 +22,26 @@ from .state import (
     PetState,
     build_stateful_prompt,
     classify_message,
+    describe_presence_transition,
     describe_self_directed_situation,
 )
 from .transport import BehaviorClient, DeviceEndpoint, TransportError
 
-GenerateBehavior = Callable[[str, OllamaConfig], BehaviorCommand]
+GenerateBehavior = Callable[[str, OllamaConfig], "BehaviorCommand | BehaviorProposal"]
 SleepFn = Callable[[float], None]
 Clock = Callable[[], float]
 
 IDLE_CAPABLE_ANIMATIONS = frozenset({"idle", "blink", "look_around"})
 IDLE_LOOP_DURATION_MS = 3000
 WALK_MIN_DURATION_MS = 6500
+PRESENCE_SIGNAL_SOURCE = "presence_signal"
+# Hold the device socket open through long idle/nap waits (device times out at
+# 30s); send a bare-newline keepalive comfortably under that.
+KEEPALIVE_INTERVAL_SECONDS = 15.0
+# During a long sleep/away stretch, nudge a brief pose shift so the OLED never
+# holds a perfectly static frame for minutes (SSD1351 burn-in guardrail).
+BURN_IN_INTERVAL_SECONDS = 150.0
+BURN_IN_DURATION_MS = 1500
 # Sources whose event drives a deterministic affect update.
 EFFECT_SOURCES = frozenset(
     {"direct_message", "build_result", "test_result", "important_alert"}
@@ -79,12 +89,13 @@ def run_pet_loop(
     *,
     dry_run: bool = False,
     state: PetState | None = None,
-    generate: GenerateBehavior = generate_behavior,
+    generate: GenerateBehavior = generate_proposal,
     sleep: SleepFn = time.sleep,
     now: Clock = time.time,
     input_queue: HostInputQueue | None = None,
     presence_tracker: PresenceTracker | None = None,
     signal_mailbox: SignalMailbox | None = None,
+    body: BodyModel | None = None,
     memory: MemoryStore | None = None,
     log_events: bool = False,
     output: TextIO | None = None,
@@ -95,7 +106,8 @@ def run_pet_loop(
     pet_state = state or PetState()
     pet_name = load_pet_name()
     presence = presence_tracker or PresenceTracker()
-    _restore_persistent_state(memory, pet_state, presence)
+    body_model = body or BodyModel()
+    _restore_persistent_state(memory, pet_state, presence, body_model)
 
     pending: _LoopEvent | None = _LoopEvent(
         id="initial", source="initial", event=loop_config.initial_event
@@ -103,10 +115,15 @@ def run_pet_loop(
     cycles = 0
 
     client = None if dry_run else BehaviorClient(_require_endpoint(endpoint))
+    keepalive = client.send_keepalive if client is not None else _noop
     try:
         while loop_config.max_cycles is None or cycles < loop_config.max_cycles:
             now_ts = now()
-            signals = signal_mailbox.get() if signal_mailbox is not None else PresenceSignals()
+            signals = (
+                signal_mailbox.get(now_ts)
+                if signal_mailbox is not None
+                else PresenceSignals()
+            )
             if pending is not None and pending.source in ENGAGEMENT_SOURCES:
                 presence.note_interaction(now_ts)
 
@@ -121,15 +138,29 @@ def run_pet_loop(
                 pet_state.affect.register_return_after_away(report.away_before_return)
 
             if pending is not None:
-                event = pending
-                situation = pending.event
-                if pending.source in EFFECT_SOURCES:
-                    _apply_owner_effects(pet_state.affect, pending)
+                if pending.source == PRESENCE_SIGNAL_SOURCE:
+                    situation = describe_presence_transition(report, pet_name=pet_name)
+                    event = _LoopEvent(
+                        id=pending.id, source=pending.source, event=situation
+                    )
+                else:
+                    event = pending
+                    situation = pending.event
+                    if pending.source in EFFECT_SOURCES:
+                        _apply_owner_effects(pet_state.affect, pending)
             else:
                 situation = describe_self_directed_situation(
                     pet_state, report, pet_name=pet_name
                 )
                 event = _LoopEvent(id="idle", source="idle", event=situation)
+
+            body_situation = body_model.advance(
+                now_ts,
+                affect=pet_state.affect,
+                report=report,
+                event_source=event.source,
+                local_hour=_local_hour(now_ts),
+            )
 
             if memory is not None:
                 _capture_memory(memory, event, report, pet_state.affect)
@@ -147,17 +178,26 @@ def run_pet_loop(
                 pet_name=pet_name,
                 presence=report,
                 memories=memories,
+                body=body_situation,
+                now=now_ts,
             )
+            proposed_body_state: str | None = None
+            keepalive()
             try:
-                behavior = generate(prompt, model_config)
+                result = generate(prompt, model_config)
             except OllamaError as exc:
                 if log_events:
                     _log_loop_error(err, event, f"model unavailable: {exc}")
                 else:
                     print(f"model unavailable: {exc}", file=err, flush=True)
-                behavior = _fallback_behavior(event)
+                result = _fallback_behavior(event)
+            behavior, proposed_body_state = _unpack_proposal(result)
             behavior = _apply_novelty(behavior, pet_state, event)
+            behavior, body_state = body_model.resolve(
+                body_situation, behavior, proposed_body_state, now=now_ts
+            )
             behavior = _adapt_loop_behavior(behavior, loop_config)
+            behavior = _burn_in_guardrail(behavior, pet_state, body_state, report, now_ts)
 
             if client is not None:
                 try:
@@ -171,6 +211,7 @@ def run_pet_loop(
             pet_state.observe(behavior, situation)
             if memory is not None:
                 memory.save_affect(pet_state.affect.to_row(), presence.last_interaction)
+                memory.save_body(body_model.to_row())
 
             print(behavior.to_json_line(), end="", file=out, flush=True)
             if log_events:
@@ -181,7 +222,11 @@ def run_pet_loop(
                 break
 
             wait_seconds = _adaptive_interval(loop_config, report, event, behavior)
-            pending = _next_event(wait_seconds, input_queue, sleep)
+            if signal_mailbox is not None:
+                expiry = signal_mailbox.next_expiry_at(now_ts)
+                if expiry is not None:
+                    wait_seconds = min(wait_seconds, max(1.0, expiry - now_ts))
+            pending = _next_event(wait_seconds, input_queue, sleep, keepalive)
     finally:
         if client is not None:
             client.close()
@@ -189,8 +234,23 @@ def run_pet_loop(
     return pet_state
 
 
+def _noop() -> None:
+    return None
+
+
+def _unpack_proposal(
+    result: "BehaviorCommand | BehaviorProposal",
+) -> tuple[BehaviorCommand, str | None]:
+    if isinstance(result, BehaviorProposal):
+        return result.to_behavior_command(), result.body_state
+    return result, None
+
+
 def _restore_persistent_state(
-    memory: MemoryStore | None, pet_state: PetState, presence: PresenceTracker
+    memory: MemoryStore | None,
+    pet_state: PetState,
+    presence: PresenceTracker,
+    body_model: BodyModel,
 ) -> None:
     if memory is None:
         return
@@ -199,6 +259,12 @@ def _restore_persistent_state(
         pet_state.affect = Affect.from_row(stored.affect)
     if stored.last_interaction is not None:
         presence.last_interaction = stored.last_interaction
+    if stored.body:
+        restored = BodyModel.from_row(stored.body, config=body_model.config)
+        body_model.state = restored.state
+        body_model.state_since = restored.state_since
+        body_model.sleep_started_at = restored.sleep_started_at
+        body_model.last_touch_at = restored.last_touch_at
 
 
 def _apply_owner_effects(affect: Affect, event: _LoopEvent) -> None:
@@ -481,18 +547,70 @@ def _next_event(
     wait_seconds: float,
     input_queue: HostInputQueue | None,
     sleep: SleepFn,
+    keepalive: Callable[[], None] = _noop,
 ) -> _LoopEvent | None:
-    if input_queue is None:
-        sleep(wait_seconds)
-        return None
+    if input_queue is not None:
+        item = input_queue.get_nowait()
+        if item is not None:
+            return _LoopEvent.from_input(item)
 
-    item = input_queue.get_nowait()
-    if item is not None:
-        return _LoopEvent.from_input(item)
-    item = input_queue.wait(wait_seconds)
-    if item is not None:
-        return _LoopEvent.from_input(item)
+    # Only chunk the wait when there is a live socket to keep alive; with no
+    # keepalive (dry run / no device) a single wait keeps timing simple.
+    chunked = keepalive is not _noop
+    remaining = wait_seconds
+    while remaining > 0:
+        chunk = min(KEEPALIVE_INTERVAL_SECONDS, remaining) if chunked else remaining
+        if input_queue is None:
+            sleep(chunk)
+        else:
+            item = input_queue.wait(chunk)
+            if item is not None:
+                return _LoopEvent.from_input(item)
+        remaining -= chunk
+        if chunked and remaining > 0:
+            # Still waiting: keep the device socket alive so an immediate event or
+            # the next behavior frame is not blocked by a dropped connection.
+            keepalive()
     return None
+
+
+# Poses that hold pixels nearly static long enough to risk OLED burn-in.
+STATIC_ANIMATIONS = frozenset({"idle", "nap", "sleepy"})
+
+
+def _burn_in_guardrail(
+    behavior: BehaviorCommand,
+    state: PetState,
+    body_state: BodyState,
+    report: PresenceReport,
+    now: float,
+) -> BehaviorCommand:
+    del report
+    static = body_state in {BodyState.SLEEPING, BodyState.DROWSY} or (
+        behavior.animation in STATIC_ANIMATIONS
+    )
+    last_animation = state.recent_animations[-1] if state.recent_animations else None
+    if not static or behavior.animation != last_animation:
+        # Either Mochi is visibly moving or the pose just changed: pixels shifted,
+        # so restart the burn-in timer and leave the frame untouched.
+        state.last_micromotion_at = now
+        return behavior
+    if state.last_micromotion_at <= 0:
+        state.last_micromotion_at = now
+        return behavior
+    if now - state.last_micromotion_at < BURN_IN_INTERVAL_SECONDS:
+        return behavior
+
+    # The same static pose has been held too long. A brief sleep-coherent flicker
+    # shifts pixels; the next tick returns to the resting pose.
+    state.last_micromotion_at = now
+    return BehaviorCommand(
+        mood=ANIMATION_TO_MOOD["blink"],
+        animation="blink",
+        text=None,
+        alert=False,
+        duration_ms=BURN_IN_DURATION_MS,
+    )
 
 
 def _adaptive_interval(

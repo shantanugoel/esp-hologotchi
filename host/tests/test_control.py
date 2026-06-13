@@ -261,3 +261,98 @@ class ControlPresenceMemoryTests(unittest.TestCase):
 
         self.assertEqual(status, 503)
         self.assertFalse(body["ok"])
+
+
+class ControlExplicitPresenceTests(unittest.TestCase):
+    def test_accepts_explicit_presence_payload_and_wakes_loop(self) -> None:
+        from host.presence import SignalMailbox
+
+        inputs = HostInputQueue()
+        mailbox = SignalMailbox()
+        with ControlServer(
+            ControlServerConfig(port=0), inputs, signal_mailbox=mailbox
+        ) as server:
+            status, body = _request_json(
+                f"http://{server.address[0]}:{server.address[1]}/presence",
+                method="POST",
+                payload={"present": True, "source": "airpods", "ttl_seconds": 30},
+            )
+
+        self.assertEqual(status, 202)
+        self.assertTrue(body["ok"])
+        self.assertIs(mailbox.get().present, True)
+        signal = inputs.wait(0.5)
+        self.assertIsNotNone(signal)
+        assert signal is not None
+        self.assertEqual(signal.source, "presence_signal")
+
+    def test_repeated_presence_posts_coalesce_into_one_signal(self) -> None:
+        from host.presence import SignalMailbox
+
+        inputs = HostInputQueue()
+        mailbox = SignalMailbox()
+        base = None
+        with ControlServer(
+            ControlServerConfig(port=0), inputs, signal_mailbox=mailbox
+        ) as server:
+            base = f"http://{server.address[0]}:{server.address[1]}/presence"
+            _request_json(base, method="POST", payload={"present": True, "source": "airpods"})
+            _request_json(base, method="POST", payload={"present": True, "source": "airpods"})
+
+        first = inputs.get_nowait()
+        second = inputs.get_nowait()
+        self.assertIsNotNone(first)
+        self.assertIsNone(second)
+
+    def test_activity_post_wakes_only_on_transition(self) -> None:
+        from host.presence import SignalMailbox
+
+        inputs = HostInputQueue()
+        mailbox = SignalMailbox()
+        with ControlServer(
+            ControlServerConfig(port=0), inputs, signal_mailbox=mailbox
+        ) as server:
+            base = f"http://{server.address[0]}:{server.address[1]}/presence"
+            # First post establishes presence (unknown -> present): a transition.
+            _request_json(base, method="POST", payload={"idle_seconds": 12.0})
+            # A second near-identical post is not a transition.
+            _request_json(base, method="POST", payload={"idle_seconds": 14.0})
+
+        first = inputs.get_nowait()
+        second = inputs.get_nowait()
+        self.assertIsNotNone(first)
+        assert first is not None
+        self.assertEqual(first.source, "presence_signal")
+        self.assertIsNone(second)
+
+    def test_rejects_explicit_presence_without_source(self) -> None:
+        from host.presence import SignalMailbox
+
+        inputs = HostInputQueue()
+        with ControlServer(
+            ControlServerConfig(port=0), inputs, signal_mailbox=SignalMailbox()
+        ) as server:
+            status, body = _request_json(
+                f"http://{server.address[0]}:{server.address[1]}/presence",
+                method="POST",
+                payload={"present": False},
+            )
+
+        self.assertEqual(status, 400)
+        self.assertIn("source", body["error"])
+
+    def test_rejects_non_positive_ttl(self) -> None:
+        from host.presence import SignalMailbox
+
+        inputs = HostInputQueue()
+        with ControlServer(
+            ControlServerConfig(port=0), inputs, signal_mailbox=SignalMailbox()
+        ) as server:
+            status, body = _request_json(
+                f"http://{server.address[0]}:{server.address[1]}/presence",
+                method="POST",
+                payload={"present": True, "source": "airpods", "ttl_seconds": 0},
+            )
+
+        self.assertEqual(status, 400)
+        self.assertIn("ttl_seconds", body["error"])

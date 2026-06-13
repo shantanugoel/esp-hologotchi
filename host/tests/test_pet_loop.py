@@ -638,3 +638,275 @@ class PetLoopRestartTests(unittest.TestCase):
         )
 
         self.assertLessEqual(result.affect.loneliness, 30.0)
+
+
+class PetLoopV2aTests(unittest.TestCase):
+    def test_next_event_chunks_long_wait_and_sends_keepalives(self) -> None:
+        from host.pet_loop import _next_event
+
+        sleeps: list[float] = []
+        pings: list[int] = []
+
+        result = _next_event(40.0, None, sleeps.append, lambda: pings.append(1))
+
+        self.assertIsNone(result)
+        self.assertEqual(sleeps, [15.0, 15.0, 10.0])
+        self.assertEqual(len(pings), 2)
+
+    def test_dry_run_wait_is_not_chunked(self) -> None:
+        from host.pet_loop import _next_event
+
+        sleeps: list[float] = []
+        result = _next_event(40.0, None, sleeps.append)
+
+        self.assertIsNone(result)
+        self.assertEqual(sleeps, [40.0])
+
+    def test_away_progression_reaches_sleep_over_ticks(self) -> None:
+        from host.body import BodyModel, BodyState
+        from host.pet_loop import run_pet_loop as _run
+        from host.presence import SignalMailbox
+
+        mailbox = SignalMailbox()
+        mailbox.set_presence("airpods", False, now=0.0)
+        body = BodyModel()
+        output = io.StringIO()
+
+        _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=3, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=_idle_generator([]),
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1100.0, 1300.0]),
+            signal_mailbox=mailbox,
+            body=body,
+            output=output,
+        )
+
+        self.assertIs(body.state, BodyState.SLEEPING)
+        self.assertIn('"animation":"nap"', output.getvalue())
+
+    def test_presence_return_signal_builds_reunion_text(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+        from host.presence import PresenceConfig, PresenceTracker, SignalMailbox
+
+        mailbox = SignalMailbox()
+        mailbox.set_presence("airpods", False, ttl_seconds=600.0, now=1000.0)
+        inputs = HostInputQueue()
+        prompts: list[str] = []
+        flipped: list[bool] = []
+
+        def fake_generate(prompt: str, config: object) -> BehaviorCommand:
+            del config
+            prompts.append(prompt)
+            if not flipped:
+                flipped.append(True)
+                mailbox.set_presence("airpods", True, ttl_seconds=600.0, now=1000.0)
+                inputs.submit_presence_signal()
+            return BehaviorCommand(
+                mood="calm", animation="idle", text=None, alert=False, duration_ms=3000
+            )
+
+        _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1200.0]),
+            input_queue=inputs,
+            signal_mailbox=mailbox,
+            presence_tracker=PresenceTracker(PresenceConfig(return_min_seconds=120.0)),
+            output=io.StringIO(),
+        )
+
+        self.assertIn("Presence changed: the owner returned", prompts[1])
+
+    def test_body_state_restored_from_memory_and_clamps_behavior(self) -> None:
+        from host.memory import MemoryStore
+        from host.pet_loop import run_pet_loop as _run
+        from host.presence import SignalMailbox
+
+        memory = MemoryStore(now=SeqClock([1000.0]))
+        self.addCleanup(memory.close)
+        memory.save_body(
+            {
+                "state": "sleeping",
+                "state_since": 900.0,
+                "sleep_started_at": 900.0,
+                "last_touch_at": 0.0,
+            }
+        )
+
+        mailbox = SignalMailbox()
+        mailbox.set_presence("airpods", False, now=0.0)
+        prompts: list[str] = []
+
+        def fake_generate(prompt: str, config: object) -> BehaviorCommand:
+            del config
+            prompts.append(prompt)
+            return BehaviorCommand(
+                mood="happy", animation="excited", text="yay", alert=False, duration_ms=4000
+            )
+
+        output = io.StringIO()
+        _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=1, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            sleep=lambda _: None,
+            now=SeqClock([1000.0]),
+            signal_mailbox=mailbox,
+            memory=memory,
+            output=output,
+        )
+
+        self.assertIn("- state: sleeping", prompts[0])
+        wire = output.getvalue()
+        # Already asleep (restored, not entering): clamp to a gentle sleep beat,
+        # never the proposed "excited".
+        self.assertNotIn('"animation":"excited"', wire)
+        self.assertTrue(
+            '"animation":"sleepy"' in wire or '"animation":"nap"' in wire,
+            wire,
+        )
+        stored = memory.load_affect().body
+        assert stored is not None
+        self.assertEqual(stored["state"], "sleeping")
+
+    def test_loop_strips_proposal_fields_from_device_frame(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+        from host.protocol import BehaviorProposal
+
+        def fake_generate(prompt: str, config: object) -> BehaviorProposal:
+            del prompt, config
+            return BehaviorProposal(
+                behavior=BehaviorCommand(
+                    mood="happy", animation="happy", text="yay", alert=False, duration_ms=4000
+                ),
+                intent="celebrate",
+                body_state="awake",
+            )
+
+        output = io.StringIO()
+        _run(
+            PetLoopConfig(max_cycles=1, initial_event="good job"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            output=output,
+        )
+
+        wire = output.getvalue()
+        self.assertNotIn("body_state", wire)
+        self.assertNotIn("intent", wire)
+        self.assertIn('"animation":"happy"', wire)
+
+    def test_idle_wait_is_capped_to_next_presence_expiry(self) -> None:
+        from host.pet_loop import run_pet_loop as _run
+        from host.presence import SignalMailbox
+
+        mailbox = SignalMailbox()
+        # Away with an explicit source expiring 10s from now; the adaptive away
+        # interval would otherwise be up to 60s.
+        mailbox.set_presence("airpods", False, ttl_seconds=10.0, now=1000.0)
+        sleeps: list[float] = []
+
+        _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=_idle_generator([]),
+            sleep=sleeps.append,
+            now=SeqClock([1000.0, 1000.0]),
+            signal_mailbox=mailbox,
+            output=io.StringIO(),
+        )
+
+        self.assertTrue(sleeps)
+        self.assertGreater(sleeps[0], 0.0)
+        self.assertLessEqual(sleeps[0], 10.0)
+
+    def test_burn_in_injects_micromotion_after_static_hold(self) -> None:
+        from host.body import BodyState
+        from host.pet_loop import _burn_in_guardrail
+        from host.presence import PresenceReport, PresenceState
+        from host.state import PetState
+
+        nap = BehaviorCommand(
+            mood="sleepy", animation="nap", text=None, alert=False, duration_ms=8000
+        )
+        report = PresenceReport(
+            state=PresenceState.AWAY,
+            ignored_seconds=0.0,
+            away_seconds=600.0,
+            returned_from_away=False,
+            away_before_return=0.0,
+            focus_app=None,
+            focus_seconds=0.0,
+            focus_pressure=0.0,
+        )
+
+        within = _burn_in_guardrail(
+            nap,
+            PetState(recent_animations=("nap",), last_micromotion_at=1000.0),
+            BodyState.SLEEPING,
+            report,
+            1100.0,
+        )
+        self.assertEqual(within.animation, "nap")
+
+        shifted = _burn_in_guardrail(
+            nap,
+            PetState(recent_animations=("nap",), last_micromotion_at=1000.0),
+            BodyState.SLEEPING,
+            report,
+            1200.0,
+        )
+        self.assertEqual(shifted.animation, "blink")
+
+    def test_alert_while_sleeping_wakes_and_alerts(self) -> None:
+        from host.body import BodyModel, BodyState
+        from host.pet_loop import run_pet_loop as _run
+        from host.presence import SignalMailbox
+
+        mailbox = SignalMailbox()
+        mailbox.set_presence("airpods", False, now=0.0)
+        body = BodyModel(state=BodyState.SLEEPING, state_since=900.0, sleep_started_at=900.0)
+        inputs = HostInputQueue()
+        inputs.submit_important_alert("meeting starts now")
+
+        def fake_generate(prompt: str, config: object) -> BehaviorCommand:
+            del prompt, config
+            return BehaviorCommand(
+                mood="alert", animation="alert", text="look now", alert=True, duration_ms=6000
+            )
+
+        output = io.StringIO()
+        _run(
+            PetLoopConfig(interval_seconds=30.0, max_cycles=2, initial_event="quiet desk time"),
+            OllamaConfig(timeout_seconds=1.0),
+            endpoint=None,
+            dry_run=True,
+            generate=fake_generate,
+            sleep=lambda _: None,
+            now=SeqClock([1000.0, 1005.0]),
+            input_queue=inputs,
+            signal_mailbox=mailbox,
+            body=body,
+            output=output,
+        )
+
+        self.assertIs(body.state, BodyState.AWAKE)
+        self.assertIn('"animation":"alert"', output.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from host.affect import Affect
+from host.body import BodyModel, BodyState
 from host.presence import PresenceReport, PresenceState
 from host.protocol import BehaviorCommand
 from host.state import (
@@ -13,6 +14,7 @@ from host.state import (
     PetState,
     build_stateful_prompt,
     classify_message,
+    describe_presence_transition,
     describe_self_directed_situation,
 )
 
@@ -23,6 +25,7 @@ def _report(
     ignored_seconds: float = 0.0,
     away_seconds: float = 0.0,
     returned_from_away: bool = False,
+    just_left: bool = False,
     focus_app: str | None = None,
     focus_pressure: float = 0.0,
 ) -> PresenceReport:
@@ -35,6 +38,7 @@ def _report(
         focus_app=focus_app,
         focus_seconds=0.0,
         focus_pressure=focus_pressure,
+        just_left=just_left,
     )
 
 
@@ -167,6 +171,64 @@ class ClassifyMessageTests(unittest.TestCase):
 
     def test_apology_outranks_other_words(self) -> None:
         self.assertEqual(classify_message("sorry that was bad"), MESSAGE_APOLOGY)
+
+
+class BodyPromptTests(unittest.TestCase):
+    def _sleeping_situation(self):
+        body = BodyModel()
+        body.state = BodyState.SLEEPING
+        body.state_since = 1000.0
+        body.sleep_started_at = 1000.0
+        return body.advance(
+            1300.0,
+            affect=Affect(sleepiness=80.0, energy=40.0),
+            report=_report(PresenceState.AWAY, away_seconds=600.0),
+            event_source="idle",
+            local_hour=14,
+        )
+
+    def test_prompt_includes_body_allowed_sets_and_local_time(self) -> None:
+        situation = self._sleeping_situation()
+        prompt = build_stateful_prompt(
+            PetState(),
+            "Quiet idle tick.",
+            presence=_report(PresenceState.AWAY, away_seconds=600.0),
+            body=situation,
+            now=1300.0,
+        )
+
+        self.assertIn("Body:", prompt)
+        self.assertIn("- state: sleeping", prompt)
+        self.assertIn("Allowed body states:", prompt)
+        self.assertIn("Allowed animations:", prompt)
+        self.assertIn("- nap", prompt)
+        self.assertNotIn("- excited", prompt)
+        self.assertIn("local time:", prompt)
+        self.assertIn("away 600s", prompt)
+
+    def test_prompt_without_body_has_no_body_block(self) -> None:
+        prompt = build_stateful_prompt(PetState(), "quiet desk time")
+        self.assertNotIn("Body:", prompt)
+
+
+class PresenceTransitionTests(unittest.TestCase):
+    def test_returned_transition(self) -> None:
+        text = describe_presence_transition(
+            _report(PresenceState.PRESENT_IGNORING, returned_from_away=True, away_seconds=2220.0)
+        )
+        self.assertIn("returned", text)
+        self.assertIn("37 minute", text)
+
+    def test_just_left_transition(self) -> None:
+        text = describe_presence_transition(_report(PresenceState.AWAY, just_left=True))
+        self.assertIn("just left", text)
+
+    def test_ignored_transition_reports_duration(self) -> None:
+        text = describe_presence_transition(
+            _report(PresenceState.PRESENT_IGNORING, ignored_seconds=900.0)
+        )
+        self.assertIn("not interacted", text)
+        self.assertIn("15 minute", text)
 
 
 if __name__ == "__main__":

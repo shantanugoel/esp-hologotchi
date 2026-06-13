@@ -55,3 +55,46 @@ class HostInputQueueTests(unittest.TestCase):
 
         with self.assertRaisesRegex(InputError, "text must not be empty"):
             inputs.submit_important_alert("   ")
+
+
+class PresenceSignalTests(unittest.TestCase):
+    def test_presence_signal_is_enqueued(self) -> None:
+        inputs = HostInputQueue()
+
+        item = inputs.submit_presence_signal()
+
+        self.assertIsNotNone(item)
+        assert item is not None
+        self.assertEqual(item.source, "presence_signal")
+        self.assertEqual(inputs.get_nowait(), item)
+
+    def test_duplicate_presence_signals_coalesce_until_consumed(self) -> None:
+        inputs = HostInputQueue()
+
+        first = inputs.submit_presence_signal()
+        second = inputs.submit_presence_signal()
+
+        self.assertIsNotNone(first)
+        self.assertIsNone(second)
+
+        # Once the pending signal is consumed, a new one can be enqueued again.
+        consumed = inputs.get_nowait()
+        assert consumed is not None
+        self.assertEqual(consumed.source, "presence_signal")
+        self.assertIsNone(inputs.get_nowait())
+
+        third = inputs.submit_presence_signal()
+        self.assertIsNotNone(third)
+
+    def test_presence_signal_does_not_block_other_inputs(self) -> None:
+        inputs = HostInputQueue()
+        inputs.submit_presence_signal()
+        message = inputs.submit_direct_message("hi")
+
+        first = inputs.get_nowait()
+        second = inputs.get_nowait()
+
+        assert first is not None and second is not None
+        self.assertEqual({first.source, second.source}, {"presence_signal", "direct_message"})
+        self.assertIn(message.id, {first.id, second.id})
+

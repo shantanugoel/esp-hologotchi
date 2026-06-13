@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -11,10 +12,16 @@ from typing import TextIO
 
 from .inputs import HostInput, HostInputQueue, InputError
 from .memory import MemoryRecord, MemoryStore
-from .presence import PresenceSignals, SignalMailbox
+from .presence import (
+    DEFAULT_PRESENCE_TTL_SECONDS,
+    MAX_TTL_SECONDS,
+    PresenceSignals,
+    SignalMailbox,
+)
 
 MAX_REQUEST_BYTES = 4096
 FOREGROUND_APP_MAX_LEN = 64
+PRESENCE_SOURCE_MAX_LEN = 32
 INPUT_PATHS = frozenset({"/message", "/build", "/test", "/alert"})
 
 
@@ -191,16 +198,17 @@ class _ControlHandler(BaseHTTPRequestHandler):
     def _handle_presence(self, payload: dict[str, object]) -> tuple[HTTPStatus, dict[str, object]]:
         if self.mailbox is None:
             raise FeatureDisabledError("presence signals are not enabled")
-        signals = _parse_presence_signals(payload)
-        self.mailbox.set(signals)
+        changed, fields = _apply_presence_payload(self.mailbox, payload, now=time.time())
+        woke_loop = False
+        if changed and self.input_queue is not None:
+            woke_loop = self.input_queue.submit_presence_signal() is not None
         self._log(
             {
                 "type": "presence",
                 "status": "accepted",
                 "remote": self.client_address[0],
-                "idle_seconds": signals.idle_seconds,
-                "screen_locked": signals.screen_locked,
-                "foreground_app": signals.foreground_app,
+                "woke_loop": woke_loop,
+                **fields,
             }
         )
         return HTTPStatus.ACCEPTED, {"ok": True}
@@ -342,6 +350,50 @@ class _ControlHandler(BaseHTTPRequestHandler):
             file=self.control_log_output,
             flush=True,
         )
+
+
+def _apply_presence_payload(
+    mailbox: SignalMailbox, payload: dict[str, object], *, now: float
+) -> tuple[bool, dict[str, object]]:
+    """Route a /presence post to the right source and report whether it matters.
+
+    A payload carrying ``present`` is an explicit-presence source (keyed by
+    ``source``); anything else is the host-activity source. The returned flag is
+    ``True`` only when the fused coarse presence (away vs present) actually
+    changed, so frequent host-activity posts that do not cross a transition do
+    not spam the loop, while meaningful changes (presence flip, screen lock, idle
+    crossing the away threshold) do wake it.
+    """
+
+    if "present" in payload:
+        present = payload.get("present")
+        if not isinstance(present, bool):
+            raise ValueError("present must be a boolean")
+        source = _optional_str(payload, "source")
+        if source is None:
+            raise ValueError("source is required for explicit presence")
+        source = source[:PRESENCE_SOURCE_MAX_LEN]
+        ttl = _presence_ttl(payload, default=DEFAULT_PRESENCE_TTL_SECONDS)
+        changed = mailbox.set_presence(source, present, ttl_seconds=ttl, now=now)
+        return changed, {"present": present, "source": source, "ttl_seconds": ttl}
+
+    signals = _parse_presence_signals(payload)
+    ttl = _presence_ttl(payload, default=None)
+    changed = mailbox.set_activity(signals, ttl_seconds=ttl, now=now)
+    return changed, {
+        "idle_seconds": signals.idle_seconds,
+        "screen_locked": signals.screen_locked,
+        "foreground_app": signals.foreground_app,
+    }
+
+
+def _presence_ttl(payload: dict[str, object], *, default: float | None) -> float | None:
+    ttl = _optional_number(payload, "ttl_seconds")
+    if ttl is None:
+        return default
+    if ttl <= 0:
+        raise ValueError("ttl_seconds must be positive")
+    return min(ttl, MAX_TTL_SECONDS)
 
 
 def _parse_presence_signals(payload: dict[str, object]) -> PresenceSignals:

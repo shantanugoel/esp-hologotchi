@@ -20,7 +20,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 IMPORTANCE_THRESHOLD = 25.0
 RECALL_BUMP = 3.0
@@ -77,6 +77,7 @@ class MemorySummary:
 class _StoredState:
     affect: dict[str, float] | None
     last_interaction: float | None
+    body: dict[str, object] | None = None
 
 
 class MemoryStore:
@@ -125,7 +126,11 @@ class MemoryStore:
         version = self._conn.execute("PRAGMA user_version").fetchone()[0]
         if version < 1:
             self._migrate_v1()
-            self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            version = 1
+        if version < 2:
+            self._migrate_v2()
+            version = 2
+        self._conn.execute(f"PRAGMA user_version = {version}")
         self._conn.commit()
 
     def _migrate_v1(self) -> None:
@@ -155,6 +160,17 @@ class MemoryStore:
             """
         )
         self._try_create_fts()
+
+    def _migrate_v2(self) -> None:
+        # Body-state continuity persistence (V2a): survive a host restart so a
+        # long nap is not reset to "awake". Older databases created at v1 need the
+        # column added; a fresh v1 table above lacks it too.
+        columns = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(pet_state)").fetchall()
+        }
+        if "body_json" not in columns:
+            self._conn.execute("ALTER TABLE pet_state ADD COLUMN body_json TEXT")
 
     def _try_create_fts(self) -> None:
         try:
@@ -578,18 +594,37 @@ class MemoryStore:
             )
             self._conn.commit()
 
+    def save_body(self, body_row: dict[str, object] | None) -> None:
+        if not self._writes_enabled:
+            return
+        now = self._now()
+        payload = json.dumps(body_row) if body_row is not None else None
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO pet_state (id, body_json, updated_at)
+                VALUES (1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    body_json = excluded.body_json,
+                    updated_at = excluded.updated_at
+                """,
+                (payload, now),
+            )
+            self._conn.commit()
+
     def load_affect(self) -> _StoredState:
         with self._lock:
             row = self._conn.execute(
-                "SELECT affect_json, last_interaction FROM pet_state WHERE id = 1"
+                "SELECT affect_json, last_interaction, body_json FROM pet_state WHERE id = 1"
             ).fetchone()
         if row is None:
-            return _StoredState(affect=None, last_interaction=None)
+            return _StoredState(affect=None, last_interaction=None, body=None)
         affect = json.loads(row["affect_json"]) if row["affect_json"] else None
         last_interaction = (
             float(row["last_interaction"]) if row["last_interaction"] is not None else None
         )
-        return _StoredState(affect=affect, last_interaction=last_interaction)
+        body = json.loads(row["body_json"]) if row["body_json"] else None
+        return _StoredState(affect=affect, last_interaction=last_interaction, body=body)
 
 
 def _score(

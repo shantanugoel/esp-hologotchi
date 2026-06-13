@@ -5,7 +5,13 @@ from dataclasses import dataclass
 from urllib import error, request
 
 from .prompt import build_situation_prompt, load_personality_prompt, load_pet_name
-from .protocol import BehaviorCommand, ValidationError, parse_behavior_response
+from .protocol import (
+    BehaviorCommand,
+    BehaviorProposal,
+    ValidationError,
+    parse_behavior_proposal,
+    parse_behavior_response,
+)
 
 
 class OllamaError(RuntimeError):
@@ -40,6 +46,29 @@ def build_generate_request(user_prompt: str, config: OllamaConfig) -> dict[str, 
 
 
 def generate_behavior(user_prompt: str, config: OllamaConfig) -> BehaviorCommand:
+    model_text = _request_model_text(user_prompt, config)
+    try:
+        return parse_behavior_response(model_text)
+    except ValidationError as exc:
+        raise OllamaError(f"Ollama returned invalid behavior JSON: {exc}") from exc
+
+
+def generate_proposal(user_prompt: str, config: OllamaConfig) -> BehaviorProposal:
+    """Like ``generate_behavior`` but keeps optional host-only ``intent``/``body_state``.
+
+    The device still only ever receives the stripped behavior frame
+    (``BehaviorProposal.to_behavior_command``); the extra fields drive host-side
+    body continuity.
+    """
+
+    model_text = _request_model_text(user_prompt, config)
+    try:
+        return parse_behavior_proposal(model_text)
+    except ValidationError as exc:
+        raise OllamaError(f"Ollama returned invalid behavior JSON: {exc}") from exc
+
+
+def _request_model_text(user_prompt: str, config: OllamaConfig) -> str:
     payload = build_generate_request(user_prompt, config)
     body = json.dumps(payload).encode("utf-8")
     req = request.Request(
@@ -74,8 +103,4 @@ def generate_behavior(user_prompt: str, config: OllamaConfig) -> BehaviorCommand
     model_text = parsed.get("response")
     if not isinstance(model_text, str):
         raise OllamaError("Ollama response did not contain a string 'response' field")
-
-    try:
-        return parse_behavior_response(model_text)
-    except ValidationError as exc:
-        raise OllamaError(f"Ollama returned invalid behavior JSON: {exc}") from exc
+    return model_text

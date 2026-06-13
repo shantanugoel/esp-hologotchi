@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
 from .affect import (
@@ -10,7 +11,8 @@ from .affect import (
     WITHDRAWN,
     Affect,
 )
-from .presence import PresenceReport
+from .body import BodySituation, BodyState
+from .presence import PresenceReport, PresenceState
 from .protocol import BehaviorCommand
 
 EVENT_MAX_LEN = 80
@@ -57,7 +59,13 @@ def _guidance(pet_name: str) -> str:
         "moment explicitly says Self-made attention alert; otherwise reserve alert for "
         "important alerts. Prefer duration_ms 2500-5000 for normal reactions, "
         "1000-2500 for blink/look_around, 6500-10000 for walk, 3000-7000 for "
-        "play/excited, and 5000-9000 for sleepy, nap, or alert."
+        "play/excited, and 5000-9000 for sleepy, nap, or alert.\n"
+        "When a Body section is present, stay physically coherent: choose only from "
+        "the listed Allowed animations, and you may add an optional body_state field "
+        "set to one of the listed Allowed body states (awake, drowsy, sleeping, or "
+        "waking). You may also add an optional short intent field. Do not wake "
+        "instantly from sleep into excitement; pass through waking or drowsy. Keep "
+        "sleeping calm. Never send any other extra fields."
     )
 
 
@@ -75,6 +83,7 @@ class PetState:
     last_daybeat_key: str = ""
     last_callback_at: float = 0.0
     last_self_nudge_at: float = 0.0
+    last_micromotion_at: float = 0.0
 
     def prompt_context(self) -> str:
         return (
@@ -103,6 +112,8 @@ def build_stateful_prompt(
     pet_name: str = "Mochi",
     presence: PresenceReport | None = None,
     memories: tuple[str, ...] = (),
+    body: BodySituation | None = None,
+    now: float | None = None,
 ) -> str:
     cleaned = event.strip()
     if not cleaned:
@@ -114,9 +125,40 @@ def build_stateful_prompt(
     parts.append(state.prompt_context())
     if presence is not None:
         parts.append(_presence_block(presence))
+    if body is not None:
+        parts.append(_body_block(body, now))
     parts.append(f"Current moment:\n{cleaned}")
     parts.append(_guidance(pet_name))
     return "\n\n".join(parts)
+
+
+def describe_presence_transition(
+    report: PresenceReport, *, pet_name: str = "Mochi"
+) -> str:
+    if report.returned_from_away:
+        minutes = max(1, int(report.away_before_return // 60))
+        return (
+            f"Presence changed: the owner returned after about {minutes} minute(s) "
+            f"away. React like {pet_name} noticing its person came back."
+        )
+    if report.just_left:
+        return (
+            f"Presence changed: the owner just left. {pet_name} can settle, wait "
+            "calmly, or get drowsy."
+        )
+    if report.state is PresenceState.ENGAGED:
+        return f"Presence changed: the owner is interacting with {pet_name} now."
+    if report.state is PresenceState.PRESENT_IGNORING:
+        minutes = int(report.ignored_seconds // 60)
+        if minutes >= 1:
+            return (
+                "Presence changed: the owner is nearby but has not interacted for "
+                f"about {minutes} minute(s)."
+            )
+        return "Presence changed: the owner is nearby."
+    return (
+        f"Presence changed: the owner seems away. {pet_name} can wait calmly or nap."
+    )
 
 
 def describe_self_directed_situation(
@@ -188,6 +230,31 @@ def _presence_block(presence: PresenceReport) -> str:
     if presence.focus_pressure > 0 and presence.focus_app:
         line += f" The human has been heads-down in {presence.focus_app} for a long while."
     return line
+
+
+def _body_block(body: BodySituation, now: float | None) -> str:
+    lines = ["Body:", f"- state: {body.state.value}"]
+    if body.state is BodyState.SLEEPING:
+        lines.append(f"- asleep for: {int(body.asleep_seconds // 60)} min")
+        lines.append(
+            f"- minimum nap elapsed: {'yes' if body.min_nap_elapsed else 'no'}"
+        )
+    elif body.state is BodyState.DROWSY:
+        lines.append(f"- drowsy for: {int(body.seconds_in_state // 60)} min")
+    if now is not None:
+        lines.append(f"- local time: {time.strftime('%H:%M', time.localtime(now))}")
+    if body.late_night:
+        lines.append("- late night: yes")
+
+    allowed_states = "\n".join(f"- {state.value}" for state in body.allowed_states)
+    allowed_animations = "\n".join(f"- {anim}" for anim in body.allowed_animations)
+    return (
+        "\n".join(lines)
+        + "\n\nAllowed body states:\n"
+        + allowed_states
+        + "\n\nAllowed animations:\n"
+        + allowed_animations
+    )
 
 
 def _short_event(event: str) -> str:
