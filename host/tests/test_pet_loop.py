@@ -139,7 +139,7 @@ class PetLoopTests(unittest.TestCase):
 
         sleeps: list[float] = []
         inputs = HostInputQueue()
-        inputs.submit_direct_message("Mochi, I fixed it")
+        inputs.submit_direct_message("Shiro, I fixed it")
 
         run_pet_loop(
             PetLoopConfig(
@@ -158,7 +158,7 @@ class PetLoopTests(unittest.TestCase):
 
         self.assertEqual(sleeps, [])
         self.assertIn("quiet desk time", prompts[0])
-        self.assertIn("Direct user message: Mochi, I fixed it", prompts[1])
+        self.assertIn("Direct user message: Shiro, I fixed it", prompts[1])
 
     def test_loop_logs_behavior_result_with_input_source_when_enabled(self) -> None:
         def fake_generate(prompt: str, config: OllamaConfig) -> BehaviorCommand:
@@ -172,7 +172,7 @@ class PetLoopTests(unittest.TestCase):
             )
 
         inputs = HostInputQueue()
-        inputs.submit_direct_message("Mochi, I fixed it")
+        inputs.submit_direct_message("Shiro, I fixed it")
         errors = io.StringIO()
 
         run_pet_loop(
@@ -256,7 +256,7 @@ class PetLoopTests(unittest.TestCase):
             )
 
         inputs = HostInputQueue()
-        inputs.submit_important_alert("Mochi, gum gum")
+        inputs.submit_important_alert("Shiro, gum gum")
         output = io.StringIO()
         errors = io.StringIO()
 
@@ -1137,7 +1137,7 @@ class PetLoopTouchTests(unittest.TestCase):
             output=io.StringIO(),
         )
 
-        # Holding through the alert calms Mochi and repairs affection.
+        # Holding through the alert calms Shiro and repairs affection.
         self.assertLess(result.affect.frustration, 60.0)
         self.assertGreater(result.affect.affection, 40.0)
 

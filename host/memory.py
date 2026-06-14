@@ -1,4 +1,4 @@
-"""Local, bounded, structured memory for Mochi (Phase 9c).
+"""Local, bounded, structured memory for Shiro (Phase 9c).
 
 Memory is fully local and private. It lives in a versioned SQLite database and is
 guarded by a single lock so the pet loop and the control-server request threads
@@ -6,7 +6,7 @@ never corrupt each other. Retrieval is deliberately simple and testable: tags,
 recency, importance, and SQLite full-text search (FTS5 when available, a LIKE
 fallback otherwise). Embeddings are intentionally left for later.
 
-A salience rubric decides what is worth keeping so Mochi does not store every
+A salience rubric decides what is worth keeping so Shiro does not store every
 idle tick. Importance decays over time and ticks up when a memory is recalled.
 """
 
@@ -42,7 +42,7 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STOPWORDS = frozenset(
     {
         "the", "a", "an", "and", "or", "is", "are", "was", "to", "of", "in",
-        "on", "it", "its", "for", "mochi", "owner", "this", "that", "with",
+        "on", "it", "its", "for", "shiro", "owner", "this", "that", "with",
     }
 )
 

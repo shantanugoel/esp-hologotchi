@@ -26,7 +26,7 @@ class ReflectionTests(unittest.TestCase):
         for index in range(3):
             store.capture(
                 "direct_message",
-                f"owner praised Mochi {index}",
+                f"owner praised Shiro {index}",
                 valence=70,
                 intensity=60,
                 owner_initiated=True,
@@ -40,14 +40,14 @@ class ReflectionTests(unittest.TestCase):
         facts = store.retrieve(tags=["preference"], limit=5)
         self.assertEqual(len(facts), 1)
         self.assertEqual(facts[0].kind, KIND_SEMANTIC)
-        self.assertIn("praises Mochi", facts[0].summary)
+        self.assertIn("praises Shiro", facts[0].summary)
 
     def test_consolidation_waits_for_threshold(self) -> None:
         store = MemoryStore()
         self.addCleanup(store.close)
         store.capture(
             "direct_message",
-            "owner praised Mochi once",
+            "owner praised Shiro once",
             valence=70,
             intensity=60,
             owner_initiated=True,

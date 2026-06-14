@@ -1,4 +1,4 @@
-//! Bounded Mochi behavior updates received from the host over Wi-Fi.
+//! Bounded Shiro behavior updates received from the host over Wi-Fi.
 //!
 //! The wire format is the Phase 3/4 newline-delimited JSON contract from
 //! `PLAN.md`: one `{"v":1,"kind":"behavior",...}` object per line. Firmware

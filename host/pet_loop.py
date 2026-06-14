@@ -47,11 +47,11 @@ BURN_IN_DURATION_MS = 1500
 EFFECT_SOURCES = frozenset(
     {"direct_message", "build_result", "test_result", "important_alert", TOUCH_SOURCE}
 )
-# Sources that count as the owner directly interacting with Mochi (resets the
+# Sources that count as the owner directly interacting with Shiro (resets the
 # "ignored" timer). An alert being raised is not the same as the owner engaging,
 # but a physical touch is.
 ENGAGEMENT_SOURCES = frozenset({"direct_message", TOUCH_SOURCE})
-# A doubletap only triggers a play spike when Mochi has the energy for it;
+# A doubletap only triggers a play spike when Shiro has the energy for it;
 # otherwise the play invite is acknowledged with a light boop.
 PLAY_INVITE_MIN_ENERGY = 30.0
 RETRIEVE_LIMIT = 3
@@ -369,7 +369,7 @@ def _apply_touch_effects(affect: Affect, gesture: str | None) -> None:
     elif gesture == "doubletap" and affect.energy >= PLAY_INVITE_MIN_ENERGY:
         affect.register_play_invite()
     else:
-        # A tap, or a play invite Mochi is too tired to accept: a light boop.
+        # A tap, or a play invite Shiro is too tired to accept: a light boop.
         affect.register_boop()
 
 
@@ -436,7 +436,7 @@ def _touch_memory_signal(
 ) -> tuple[int, int, bool, bool, list[str]]:
     # Touch is always owner-initiated; a sustained pet is the most salient
     # affection moment, a play invite next, a quick boop least. The doubletap is
-    # tagged as an invite regardless of whether Mochi had the energy to accept.
+    # tagged as an invite regardless of whether Shiro had the energy to accept.
     if gesture == "hold":
         return 60, 60, True, False, ["touch", "affection"]
     if gesture == "doubletap":
@@ -763,7 +763,7 @@ def _burn_in_guardrail(
     )
     last_animation = state.recent_animations[-1] if state.recent_animations else None
     if not static or behavior.animation != last_animation:
-        # Either Mochi is visibly moving or the pose just changed: pixels shifted,
+        # Either Shiro is visibly moving or the pose just changed: pixels shifted,
         # so restart the burn-in timer and leave the frame untouched.
         state.last_micromotion_at = now
         return behavior

@@ -63,7 +63,7 @@ class BodyProgressionTests(unittest.TestCase):
         _, state = body.resolve(second, _behavior(), None, now=1015.0)
         self.assertIs(state, BodyState.DROWSY)
 
-        # After drowsing long enough, Mochi falls asleep and the frame is clamped.
+        # After drowsing long enough, Shiro falls asleep and the frame is clamped.
         third = body.advance(1040.0, affect=_awake_affect(), report=away, event_source="idle", local_hour=14)
         self.assertIs(third.default_state, BodyState.SLEEPING)
         behavior, state = body.resolve(third, _behavior("play"), None, now=1040.0)

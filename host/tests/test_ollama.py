@@ -66,7 +66,7 @@ class OllamaTests(unittest.TestCase):
         self.assertFalse(request_body["think"])
         self.assertEqual(request_body["options"], {"num_predict": 80})
         self.assertFalse(request_body["stream"])
-        self.assertIn("Mochi", request_body["system"])
+        self.assertIn("Shiro", request_body["system"])
         self.assertIn("the build just passed", request_body["prompt"])
 
     def test_generate_behavior_wraps_socket_timeout(self) -> None:

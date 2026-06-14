@@ -1,6 +1,6 @@
-"""Deterministic affect model for Mochi (Phase 9a).
+"""Deterministic affect model for Shiro (Phase 9a).
 
-This is the "continuity" half of Mochi's brain: needs, drives, relationship
+This is the "continuity" half of Shiro's brain: needs, drives, relationship
 state, and a slow bond level. It is a pure, testable model with no model calls
 and no I/O. Values are stored as continuous accumulators so that small per-tick
 decay adds up correctly over a variable loop cadence, and are exposed as
@@ -8,7 +8,7 @@ integers for the prompt and for persistence.
 
 Drives are *satisfaction* levels in ``0..100`` where 100 means the need is met
 and 0 means it is desperate. They fall over real elapsed wall-clock time and are
-replenished by owner actions and Mochi's own choices, so neglect has visible,
+replenished by owner actions and Shiro's own choices, so neglect has visible,
 bounded, recoverable consequences.
 """
 
@@ -68,7 +68,7 @@ SAD = "sad"
 GRUMPY = "grumpy"
 WITHDRAWN = "withdrawn"
 
-# State -> which of the existing 11 animations express it (renderer mapping, so
+# State -> which of the existing 12 animations express it (renderer mapping, so
 # new feelings ship with no firmware change).
 SUGGESTED_ANIMATIONS: dict[str, tuple[str, ...]] = {
     CONTENT: ("idle", "blink", "look_around", "walk", "happy"),
@@ -112,7 +112,7 @@ class Affect:
 
         ``ignoring`` and ``away`` come from the presence state machine.
         ``focus_pressure`` in ``0..1`` is grounded jealousy: the owner being
-        heads-down in one app while ignoring Mochi.
+        heads-down in one app while ignoring Shiro.
         """
 
         if self.last_update <= 0:
@@ -239,9 +239,9 @@ class Affect:
         """A sustained hold: petting and soothing. Repairs affection and calms arousal.
 
         This is also the alert-acknowledgment path: a hold during an alert eases
-        frustration and loneliness so Mochi settles instead of staying keyed up.
+        frustration and loneliness so Shiro settles instead of staying keyed up.
         Stimulation is a *satisfaction* drive (high = met), so a hold gently meets
-        the contact need rather than lowering it — petting must not make Mochi
+        the contact need rather than lowering it — petting must not make Shiro
         restless.
         """
         self.social = _rise(self.social, 25.0)
@@ -262,7 +262,7 @@ class Affect:
         self.loneliness = _drop(self.loneliness, 15.0)
         self.affection = _rise(self.affection, 3.0)
 
-    # -- Behavior-driven events (what Mochi just chose) ---------------------
+    # -- Behavior-driven events (what Shiro just chose) ---------------------
 
     def register_behavior(self, animation: str) -> None:
         match animation:
@@ -341,7 +341,7 @@ class Affect:
             GRUMPY: "frustrated and a bit grumpy",
             WITHDRAWN: "low-energy and withdrawn, sulking softly",
         }
-        return f"Mochi feels {descriptions[state]}{sleepy}."
+        return f"Shiro feels {descriptions[state]}{sleepy}."
 
     def snapshot(self) -> dict[str, int]:
         return {

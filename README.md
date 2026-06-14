@@ -4,7 +4,7 @@ Hologotchi is a tiny holographic desk pet: an **ESP32-C3** drives a **128x128 SS
 
 V1 is intentionally narrow:
 
-- one pet: **Mochi**, a shiba-like holographic desk companion
+- one pet: **Shiro**, a Shiro-style holographic desk companion
 - one runtime transport: **Wi-Fi**
 - one control path: **newline-delimited JSON over a TCP connection**
 - one host stack: **Python + Ollama**
@@ -29,7 +29,7 @@ The repository currently includes:
 See:
 
 - [`PLAN.md`](PLAN.md) for the roadmap
-- [`PET.md`](PET.md) for Mochi's locked personality and behavior vocabulary
+- [`PET.md`](PET.md) for Shiro's locked personality and behavior vocabulary
 - [`DEMO.md`](DEMO.md) for the first demo shot list and trigger commands
 
 ## Repository layout
@@ -41,13 +41,13 @@ See:
 
 ## How it works
 
-The host is the brain. It asks the model what Mochi should do next, validates the result, and sends a single high-level behavior update to the device.
+The host is the brain. It asks the model what Shiro should do next, validates the result, and sends a single high-level behavior update to the device.
 
 The device does not run the model. It:
 
 - joins Wi-Fi
 - listens for behavior updates on a TCP socket
-- renders Mochi continuously on the OLED
+- renders Shiro continuously on the OLED
 - falls back to a local idle loop if the host is unavailable
 
 Example wire payload:
@@ -112,7 +112,7 @@ Device Wi-Fi and control-socket settings are kept in a **local, git-ignored TOML
 
 ## Touch hardware (TTP223)
 
-Mochi's first physical input is a **TTP223 capacitive touch module**. The
+Shiro's first physical input is a **TTP223 capacitive touch module**. The
 firmware samples it, classifies `tap` / `hold` / `doubletap` with a deterministic
 debounced state machine, and sends each gesture to the host as a device → host
 `input` frame on the same TCP connection used for behavior updates.
@@ -196,12 +196,12 @@ Run the pet loop with the Phase 6 direct-message endpoint:
 uv run hologotchi-host --device-host 192.168.1.50 --loop --serve
 ```
 
-Send Mochi a direct message:
+Send Shiro a direct message:
 
 ```bash
 curl -X POST http://127.0.0.1:8787/message \
   -H 'Content-Type: application/json' \
-  -d '{"text":"Mochi, I finally fixed the bug"}'
+  -d '{"text":"Shiro, I finally fixed the bug"}'
 ```
 
 Report a build or test result:
@@ -224,7 +224,7 @@ curl -X POST http://127.0.0.1:8787/alert \
   -d '{"text":"calendar event starts now"}'
 ```
 
-Mochi feels physical touch through a **TTP223 capacitive pad on the device** (see
+Shiro feels physical touch through a **TTP223 capacitive pad on the device** (see
 [Touch hardware](#touch-hardware-ttp223) below): the firmware classifies the
 gesture and sends it to the host over the existing connection automatically. The
 same `POST /touch` endpoint stays available for testing without hardware and for
@@ -238,8 +238,8 @@ curl -X POST http://127.0.0.1:8787/touch \
 ```
 
 A `tap` is a light boop, a `hold` is a soothing pet (repairs affection, calms an
-alert), and a `doubletap` is a play invite Mochi takes up when it has the energy.
-Touch counts as engagement, wakes Mochi from a nap through a gentle waking
+alert), and a `doubletap` is a play invite Shiro takes up when it has the energy.
+Touch counts as engagement, wakes Shiro from a nap through a gentle waking
 transition, and tags salient affection moments in memory. Whether a gesture
 arrives from the device or from HTTP, the host reacts identically.
 
@@ -253,7 +253,7 @@ When `--serve` is enabled, the host logs input and model-result records to stder
 so direct messages are distinguishable from regular idle loop updates:
 
 ```json
-{"type":"input","status":"accepted","id":"direct-1","source":"direct_message","transport":"http","remote":"127.0.0.1","event":"Direct user message: Mochi, I finally fixed the bug"}
+{"type":"input","status":"accepted","id":"direct-1","source":"direct_message","transport":"http","remote":"127.0.0.1","event":"Direct user message: Shiro, I finally fixed the bug"}
 {"type":"behavior_result","input_id":"direct-1","source":"direct_message","animation":"happy","mood":"happy","text":"tail wag","alert":false,"duration_ms":3000}
 ```
 
@@ -283,24 +283,24 @@ Useful flags:
 - `--serve` — expose `POST /message`, `/build`, `/test`, `/alert`, and `/touch` while the pet loop is running
 - `--message-bind-host 127.0.0.1` — bind host for the message endpoint; use `0.0.0.0` for LAN clients
 - `--message-port 8787` — bind port for the message endpoint
-- `--memory-db PATH` — where Mochi keeps its local SQLite memory (defaults under `$XDG_STATE_HOME/hologotchi/`)
+- `--memory-db PATH` — where Shiro keeps its local SQLite memory (defaults under `$XDG_STATE_HOME/hologotchi/`)
 - `--no-memory` — run the loop without persisting or recalling memory
 - `--reset-memory` / `--inspect-memory` — erase or print the local memory store, then exit
 - `--away-idle-seconds 300` — OS idle time at which the owner counts as away
-- `--engaged-window-seconds 90` — how long after a direct interaction Mochi still feels engaged
-- `--focus-jealousy-seconds 1200` — heads-down time on one app before Mochi gets a little jealous
+- `--engaged-window-seconds 90` — how long after a direct interaction Shiro still feels engaged
+- `--focus-jealousy-seconds 1200` — heads-down time on one app before Shiro gets a little jealous
 
-## Mochi's mind: needs, presence, and memory
+## Shiro's mind: needs, presence, and memory
 
 When the loop runs it keeps a small but persistent inner life (host-only; the
 device firmware and wire protocol are unchanged):
 
 - **Needs and relationship (Phase 9a):** `social`, `play`, `rest`, and
   `stimulation` drives decay in real wall-clock time and are replenished by your
-  attention and Mochi's own actions. Neglect escalates content → restless →
+  attention and Shiro's own actions. Neglect escalates content → restless →
   needy → sad/grumpy → withdrawn, always recoverable through attention, play,
   praise, rest, or an apology. A slow `bond` level grows over days.
-- **Presence (Phase 9b):** Mochi distinguishes *away* (you're gone or the screen
+- **Presence (Phase 9b):** Shiro distinguishes *away* (you're gone or the screen
   is locked — not rejection) from *present-but-ignoring* (you're at the computer
   but not interacting — real "ignored") from *engaged*. Feed cheap, opt-in,
   local signals to the loop:
@@ -311,11 +311,11 @@ device firmware and wire protocol are unchanged):
     -d '{"idle_seconds":12,"screen_locked":false,"foreground_app":"editor"}'
   ```
 
-  With no signals posted, Mochi assumes you are **away** (a benign absence, never
+  With no signals posted, Shiro assumes you are **away** (a benign absence, never
   treated as rejection), so "ignored" and jealousy only kick in once a helper
   starts reporting presence. Post the **full** signal set each time — each
   `POST /presence` replaces the previous one. Long heads-down focus on a single
-  app while ignoring Mochi produces a grounded touch of jealousy.
+  app while ignoring Shiro produces a grounded touch of jealousy.
 - **Memory (Phase 9c):** meaningful moments are scored for salience and stored in
   local SQLite (recent messages, praise, ignored stretches, build/test outcomes,
   alerts). A bounded, ranked set is recalled into each prompt. Memory is fully

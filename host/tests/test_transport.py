@@ -151,7 +151,7 @@ class TransportTests(unittest.TestCase):
 
         def flaky_connect(address: tuple[str, int], timeout: float) -> _CaptureSocket:
             nonlocal attempts
-            self.assertEqual(address, ("mochi.local", 4242))
+            self.assertEqual(address, ("shiro.local", 4242))
             self.assertEqual(timeout, 3.0)
             attempts += 1
             if attempts < 3:
@@ -171,7 +171,7 @@ class TransportTests(unittest.TestCase):
                     duration_ms=2000,
                 ),
                 DeviceEndpoint(
-                    host="mochi.local",
+                    host="shiro.local",
                     port=4242,
                     connect_retries=4,
                     retry_delay_seconds=0.25,
@@ -244,7 +244,7 @@ class KeepaliveTests(unittest.TestCase):
         with mock.patch(
             "host.transport.socket.create_connection", return_value=fake_socket
         ):
-            client = BehaviorClient(DeviceEndpoint(host="mochi.local", timeout_seconds=1.0))
+            client = BehaviorClient(DeviceEndpoint(host="shiro.local", timeout_seconds=1.0))
             client.send(
                 BehaviorCommand(
                     mood="calm", animation="idle", text=None, alert=False, duration_ms=3000
@@ -257,7 +257,7 @@ class KeepaliveTests(unittest.TestCase):
         self.assertTrue(fake_socket.sent.endswith(b"}\n\n"))
 
     def test_send_keepalive_is_noop_before_connecting(self) -> None:
-        client = BehaviorClient(DeviceEndpoint(host="mochi.local", timeout_seconds=1.0))
+        client = BehaviorClient(DeviceEndpoint(host="shiro.local", timeout_seconds=1.0))
         # No socket yet: must not raise or connect.
         client.send_keepalive()
 
@@ -273,7 +273,7 @@ class KeepaliveTests(unittest.TestCase):
         with mock.patch(
             "host.transport.socket.create_connection", return_value=broken
         ):
-            client = BehaviorClient(DeviceEndpoint(host="mochi.local", timeout_seconds=1.0))
+            client = BehaviorClient(DeviceEndpoint(host="shiro.local", timeout_seconds=1.0))
             client._sock = broken  # type: ignore[attr-defined]
             client.send_keepalive()  # must not raise
 
@@ -503,7 +503,7 @@ class SendSerializationTests(unittest.TestCase):
             "host.transport.socket.create_connection", return_value=sock
         ):
             client = BehaviorClient(
-                DeviceEndpoint(host="mochi.local", timeout_seconds=1.0)
+                DeviceEndpoint(host="shiro.local", timeout_seconds=1.0)
             )
             client.send(_idle_behavior())  # establish the shared socket
 

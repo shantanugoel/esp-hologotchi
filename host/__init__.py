@@ -1,4 +1,4 @@
-"""Host service for Mochi's local pet loop."""
+"""Host service for Shiro's local pet loop."""
 
 from .protocol import BehaviorCommand
 

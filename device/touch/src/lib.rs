@@ -1,4 +1,4 @@
-//! Pure, deterministic touch-gesture classifier for Mochi's TTP223 input.
+//! Pure, deterministic touch-gesture classifier for Shiro's TTP223 input.
 //!
 //! This crate has **no** dependencies and no hardware coupling so the firmware
 //! can drive it from an interrupt-free polling loop while the host can unit-test

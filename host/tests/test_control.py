@@ -19,7 +19,7 @@ class ControlServerTests(unittest.TestCase):
             status, body = _request_json(
                 f"http://{server.address[0]}:{server.address[1]}/message",
                 method="POST",
-                payload={"text": "Mochi, the bug is fixed"},
+                payload={"text": "Shiro, the bug is fixed"},
             )
 
             item = inputs.wait(0.5)
@@ -30,7 +30,7 @@ class ControlServerTests(unittest.TestCase):
         assert item is not None
         self.assertEqual(item.id, "direct-1")
         self.assertEqual(item.source, "direct_message")
-        self.assertEqual(item.event, "Direct user message: Mochi, the bug is fixed")
+        self.assertEqual(item.event, "Direct user message: Shiro, the bug is fixed")
         self.assertIn('"status":"accepted"', logs.getvalue())
         self.assertIn('"id":"direct-1"', logs.getvalue())
 

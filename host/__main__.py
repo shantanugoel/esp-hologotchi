@@ -18,14 +18,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m host",
         description=(
-            "Run Mochi's host brain with Ollama and send behavior updates to the ESP32."
+            "Run Shiro's host brain with Ollama and send behavior updates to the ESP32."
         ),
     )
     parser.add_argument(
         "prompt",
         nargs="?",
         default="Quiet desk time. Nothing urgent is happening.",
-        help="The current moment or message Mochi should react to.",
+        help="The current moment or message Shiro should react to.",
     )
     parser.add_argument(
         "--device-host",
@@ -140,7 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--memory-db",
         default=_default_memory_db(),
         help=(
-            "Path to Mochi's local SQLite memory. Persists needs, relationship "
+            "Path to Shiro's local SQLite memory. Persists needs, relationship "
             "state, and remembered moments across restarts."
         ),
     )
@@ -163,7 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--engaged-window-seconds",
         type=float,
         default=PresenceConfig().engaged_window_seconds,
-        help="How long after a direct interaction Mochi still counts as engaged.",
+        help="How long after a direct interaction Shiro still counts as engaged.",
     )
     parser.add_argument(
         "--away-idle-seconds",
@@ -175,7 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--focus-jealousy-seconds",
         type=float,
         default=PresenceConfig().focus_jealousy_seconds,
-        help="How long heads-down on one foreground app before Mochi gets jealous.",
+        help="How long heads-down on one foreground app before Shiro gets jealous.",
     )
     return parser
 

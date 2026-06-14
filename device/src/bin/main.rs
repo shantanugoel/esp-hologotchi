@@ -7,7 +7,7 @@
 )]
 #![deny(clippy::large_stack_frames)]
 
-//! Phase 4 firmware entry point: keep Mochi idling on the OLED, connect the
+//! Phase 4 firmware entry point: keep Shiro idling on the OLED, connect the
 //! ESP32-C3 to local Wi-Fi, and accept newline-delimited JSON behavior updates
 //! over a small TCP control socket.
 
@@ -48,7 +48,7 @@ extern crate alloc;
 // This creates a default app-descriptor required by the esp-idf bootloader.
 esp_bootloader_esp_idf::esp_app_desc!();
 
-/// Render tick. 20 fps is plenty for Mochi and gives the control loop clear,
+/// Render tick. 20 fps is plenty for Shiro and gives the control loop clear,
 /// deterministic timing.
 const FRAME_MS: u32 = 50;
 /// Default Wi-Fi control socket port shared with the host service.
@@ -197,7 +197,7 @@ async fn main(spawner: Spawner) -> ! {
     }
 }
 
-/// Fixed-rate render loop: apply the latest host behavior, draw Mochi's current
+/// Fixed-rate render loop: apply the latest host behavior, draw Shiro's current
 /// frame, flush it to the OLED, then advance to the next frame.
 #[embassy_executor::task]
 #[allow(

@@ -14,7 +14,7 @@ from host.prompt import (
 
 class PromptTests(unittest.TestCase):
     def test_load_pet_name_uses_pet_md_identity(self) -> None:
-        self.assertEqual(load_pet_name(), "Mochi")
+        self.assertEqual(load_pet_name(), "Shiro")
 
     def test_extract_pet_name_reads_identity_name(self) -> None:
         self.assertEqual(extract_pet_name("- **Name:** Pip\n"), "Pip")

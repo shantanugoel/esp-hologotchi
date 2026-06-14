@@ -1,7 +1,7 @@
-"""Body-state continuity for Mochi (Phase V2a).
+"""Body-state continuity for Shiro (Phase V2a).
 
 A thin, deterministic discrete layer over the continuous affect drives. Body
-state answers "is Mochi awake, drowsing, asleep, or waking up right now?" with
+state answers "is Shiro awake, drowsing, asleep, or waking up right now?" with
 real physical inertia: a nap lasts a believable stretch, waking passes through a
 transition instead of snapping to excitement, and sleep only happens when there
 is a real reason (tiredness, the owner being away, or late night).
@@ -66,10 +66,10 @@ _CANONICAL_ANIMATIONS: tuple[str, ...] = (
     "play", "excited", "sleepy", "nap", "worried", "alert",
 )
 
-# Sources that justify interrupting sleep / keeping Mochi awake.
+# Sources that justify interrupting sleep / keeping Shiro awake.
 WAKE_TRIGGER_SOURCES = frozenset({"important_alert", "direct_message", "touch"})
 
-# "Fully rested": Mochi has no physical reason to keep sleeping. Used to forbid
+# "Fully rested": Shiro has no physical reason to keep sleeping. Used to forbid
 # the incoherent "sleeping with max energy / zero sleepiness" state the plan bans.
 WELL_RESTED_ENERGY = 85.0
 WELL_RESTED_SLEEPINESS = 20.0
@@ -137,7 +137,7 @@ class BodyModel:
         if self.state is BodyState.SLEEPING and self.sleep_started_at <= 0:
             self.sleep_started_at = now
 
-        # Waking is transient: once it has run its course Mochi is simply awake.
+        # Waking is transient: once it has run its course Shiro is simply awake.
         if (
             self.state is BodyState.WAKING
             and now - self.state_since >= self.config.waking_seconds
@@ -159,7 +159,7 @@ class BodyModel:
             affect.energy >= WELL_RESTED_ENERGY
             and affect.sleepiness <= WELL_RESTED_SLEEPINESS
         )
-        # Away is a reason to rest only while Mochi is actually tired; a fully
+        # Away is a reason to rest only while Shiro is actually tired; a fully
         # rested pet that is merely alone should not be pushed back to sleep.
         sleep_pressure = affect.is_sleepy() or late_night or (away and not well_rested)
         wake_trigger = event_source in WAKE_TRIGGER_SOURCES or returned
@@ -218,7 +218,7 @@ class BodyModel:
         """Pick the final body state and clamp the behavior to stay coherent.
 
         An invalid or missing proposal is softened to the deterministic default
-        rather than rejected. An alert always wins: Mochi cannot raise an alert
+        rather than rejected. An alert always wins: Shiro cannot raise an alert
         while "asleep", so alerts force ``awake``.
         """
 

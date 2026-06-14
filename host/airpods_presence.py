@@ -7,7 +7,7 @@ minimal presence frame to the host control server:
     {"present": true,  "source": "airpods", "ttl_seconds": 30}
     {"present": false, "source": "airpods", "ttl_seconds": 30}
 
-It is deliberately dumb: it knows nothing about Mochi's feelings or body state,
+It is deliberately dumb: it knows nothing about Shiro's feelings or body state,
 it only reports whether the named device is connected. Bluetooth probing is
 brittle and platform-specific, so the brittle parts (subprocess + parsing) are
 isolated and the testable parts (debounce, "post only on change", payload) are
@@ -304,7 +304,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m host.airpods_presence",
         description=(
-            "Poll Bluetooth for a named device and POST its presence to Mochi's "
+            "Poll Bluetooth for a named device and POST its presence to Shiro's "
             "host control server. Optional, platform-specific, localhost-only by "
             "default."
         ),

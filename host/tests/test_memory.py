@@ -33,7 +33,7 @@ class MemoryCaptureTests(unittest.TestCase):
     def test_salient_owner_moment_is_stored(self) -> None:
         memory_id = self.store.capture(
             "direct_message",
-            "owner praised Mochi after tests passed",
+            "owner praised Shiro after tests passed",
             valence=70,
             intensity=60,
             owner_initiated=True,
@@ -218,7 +218,7 @@ class MemoryPersistenceTests(unittest.TestCase):
             path = os.path.join(tmp, "memory.db")
             store = MemoryStore(path, now=clock)
             store.capture(
-                "direct_message", "owner praised Mochi", valence=70, intensity=60,
+                "direct_message", "owner praised Shiro", valence=70, intensity=60,
                 owner_initiated=True,
             )
             store.save_affect({"social": 42.0, "bond": 15.0}, last_interaction=999.0)

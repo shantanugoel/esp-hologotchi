@@ -50,11 +50,11 @@ class PetStatePromptTests(unittest.TestCase):
             state,
             "user is reading logs",
             presence=_report(PresenceState.PRESENT_IGNORING, ignored_seconds=200.0),
-            memories=("Yesterday owner praised Mochi.",),
+            memories=("Yesterday owner praised Shiro.",),
         )
 
         self.assertIn("Relevant memories:", prompt)
-        self.assertIn("Yesterday owner praised Mochi.", prompt)
+        self.assertIn("Yesterday owner praised Shiro.", prompt)
         self.assertIn("social: 30/100", prompt)
         self.assertIn("affection: 80/100", prompt)
         self.assertIn("Presence: present_but_ignoring", prompt)
@@ -70,7 +70,7 @@ class PetStatePromptTests(unittest.TestCase):
         prompt = build_stateful_prompt(PetState(), "quiet desk time", pet_name="Pip")
 
         self.assertIn("Choose Pip's next behavior", prompt)
-        self.assertNotIn("Choose Mochi's next behavior", prompt)
+        self.assertNotIn("Choose Shiro's next behavior", prompt)
 
     def test_recent_phrases_keep_last_five(self) -> None:
         state = PetState()

@@ -109,7 +109,7 @@ def build_stateful_prompt(
     state: PetState,
     event: str,
     *,
-    pet_name: str = "Mochi",
+    pet_name: str = "Shiro",
     presence: PresenceReport | None = None,
     memories: tuple[str, ...] = (),
     body: BodySituation | None = None,
@@ -133,7 +133,7 @@ def build_stateful_prompt(
 
 
 def describe_presence_transition(
-    report: PresenceReport, *, pet_name: str = "Mochi"
+    report: PresenceReport, *, pet_name: str = "Shiro"
 ) -> str:
     if report.returned_from_away:
         minutes = max(1, int(report.away_before_return // 60))
@@ -162,7 +162,7 @@ def describe_presence_transition(
 
 
 def describe_self_directed_situation(
-    state: PetState, presence: PresenceReport, *, pet_name: str = "Mochi"
+    state: PetState, presence: PresenceReport, *, pet_name: str = "Shiro"
 ) -> str:
     affect = state.affect
     inner = affect.overall_state()

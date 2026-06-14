@@ -47,7 +47,7 @@ class ProtocolValidationTests(unittest.TestCase):
 
     def test_accepts_behavior_wrapped_by_model_text(self) -> None:
         behavior = parse_behavior_response(
-            '<think>Build status means Mochi should celebrate.</think>\n'
+            '<think>Build status means Shiro should celebrate.</think>\n'
             '```json\n'
             '{"v":1,"kind":"behavior","mood":"happy","animation":"happy","text":"build passed","alert":false,"duration_ms":4000}\n'
             '```'

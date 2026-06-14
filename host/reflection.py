@@ -1,4 +1,4 @@
-"""Deterministic memory consolidation for Mochi (Phase 9e).
+"""Deterministic memory consolidation for Shiro (Phase 9e).
 
 This module turns repeated observed events into small durable facts. It is a
 guardrail, not a free-form reflection engine: facts come from counters in the
@@ -30,7 +30,7 @@ class ConsolidationRule:
 
 RULES: tuple[ConsolidationRule, ...] = (
     ConsolidationRule(
-        summary="Owner often praises Mochi; praise helps Mochi feel proud.",
+        summary="Owner often praises Shiro; praise helps Shiro feel proud.",
         kind=KIND_SEMANTIC,
         tags=("owner", "praise", "preference"),
         valence=55,
@@ -40,7 +40,7 @@ RULES: tuple[ConsolidationRule, ...] = (
         threshold=PRAISE_THRESHOLD,
     ),
     ConsolidationRule(
-        summary="Owner apologizes after rough moments; apologies help Mochi recover.",
+        summary="Owner apologizes after rough moments; apologies help Shiro recover.",
         kind=KIND_SEMANTIC,
         tags=("owner", "apology", "repair"),
         valence=45,
@@ -50,7 +50,7 @@ RULES: tuple[ConsolidationRule, ...] = (
         threshold=APOLOGY_THRESHOLD,
     ),
     ConsolidationRule(
-        summary="Repeated build failures make Mochi worried and protective.",
+        summary="Repeated build failures make Shiro worried and protective.",
         kind=KIND_AFFECT,
         tags=("build", "fail", "protective"),
         valence=-45,

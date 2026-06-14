@@ -1,4 +1,4 @@
-"""Presence state machine for Mochi (Phase 9b).
+"""Presence state machine for Shiro (Phase 9b).
 
 "How does it know it's being ignored?" is a first-class requirement. The owner's
 computer is the sensor. This module turns cheap, opt-in, host-side signals (OS
@@ -7,7 +7,7 @@ idle time, screen-lock state, foreground app) into one of three presence states:
 - ``away`` — no host activity or the screen is locked. A genuine absence is not
   treated as rejection.
 - ``present_but_ignoring`` — the owner is using the computer but has not
-  interacted with Mochi for a while. This is real "ignored" and it grows
+  interacted with Shiro for a while. This is real "ignored" and it grows
   loneliness over time.
 - ``engaged`` — a recent direct interaction (message, boop, acknowledged alert).
 
@@ -266,7 +266,7 @@ class SignalMailbox:
 
         Any fresh source reporting ``present=false`` wins (the owner is treated
         as away even if local input looks active). Otherwise a fresh
-        ``present=true`` makes Mochi consider the owner nearby. With no fresh
+        ``present=true`` makes Shiro consider the owner nearby. With no fresh
         explicit source the result is ``None`` and the tracker falls back to
         host activity.
         """
@@ -369,7 +369,7 @@ class PresenceTracker:
             return PresenceState.PRESENT_IGNORING
         # No evidence of presence at all. Treat as a benign absence rather than
         # rejection, so a missing presence helper or a fresh restart never makes
-        # Mochi feel actively ignored.
+        # Shiro feel actively ignored.
         return PresenceState.AWAY
 
     def _update_focus(self, now: float, signals: PresenceSignals) -> None:
