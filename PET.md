@@ -145,7 +145,7 @@ matching mood label.
 | 2  | `blink`       | `calm`    | Aliveness tic; punctuates idle                   | Quick dot-eye blink                                | yes          |
 | 3  | `look_around` | `curious` | Curious, paying attention, mild interest         | Left/right scan, listening pose, floppy ears       | yes          |
 | 4  | `confused`    | `curious` | Unexpected touch or unclear human presence       | Head tilt, puzzled tiny face                       | no           |
-| 5  | `walk`        | `curious` | Self-directed patrol, sniffing, mild boredom     | Temporary side-looking patrol poses                | no           |
+| 5  | `walk`        | `curious` | Self-directed patrol, sniffing, mild boredom     | Side-profile walk cycle with alternating paws      | no           |
 | 6  | `happy`       | `happy`   | Wins, praise, affection, good news               | Tail wag, small bounce, bright posture             | no           |
 | 7  | `play`        | `happy`   | Wants interaction or invents a tiny game         | Paw lift or invite pose                            | no           |
 | 8  | `excited`     | `happy`   | Big joy, extra celebration                       | Bigger bounce and energetic pose                   | no           |

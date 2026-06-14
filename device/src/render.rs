@@ -26,12 +26,12 @@ const SIN: [i16; 64] = [
 
 /// Frames between local idle blinks (~4.8 s at 20 fps).
 const BLINK_PERIOD: u32 = 96;
-/// How many frames a local idle blink stays shut.
-const BLINK_LEN: u32 = 3;
+/// How many frames a local idle blink sequence lasts.
+const BLINK_LEN: u32 = 6;
 /// A curious look-around every ~14 seconds at 20 fps.
 const LOOK_PERIOD: u32 = 280;
 const LOOK_START: u32 = 150;
-const LOOK_LEN: u32 = 42;
+const LOOK_LEN: u32 = 62;
 /// Half of the temporary patrol loop.
 const WALK_HALF_PERIOD: u32 = 110;
 
@@ -41,28 +41,66 @@ const TEXT: Rgb565 = Rgb565::new(0, 0, 0);
 const ALERT: Rgb565 = Rgb565::new(31, 8, 4);
 const ALERT_SOFT: Rgb565 = Rgb565::new(31, 30, 10);
 
-const LOOK_LOOP: [TimedPose; 5] = [
-    TimedPose::new(PoseId::Listening, 10, 0, 0),
-    TimedPose::new(PoseId::LookingLeft, 16, -1, 0),
-    TimedPose::new(PoseId::Listening, 8, 0, 0),
-    TimedPose::new(PoseId::LookingRight, 16, 1, 0),
-    TimedPose::new(PoseId::SittingIdle, 10, 0, 0),
+const IDLE_LOOP: [TimedPose; 3] = [
+    TimedPose::new(PoseId::Idle00, 34, 0, 0),
+    TimedPose::new(PoseId::Idle01, 26, 0, 0),
+    TimedPose::new(PoseId::Idle02, 30, 0, 0),
+];
+const BLINK_LOOP: [TimedPose; 3] = [
+    TimedPose::new(PoseId::Blink00, 2, 0, 0),
+    TimedPose::new(PoseId::Blink01, 3, 0, 0),
+    TimedPose::new(PoseId::Blink02, 2, 0, 0),
+];
+const LOOK_LOOP: [TimedPose; 6] = [
+    TimedPose::new(PoseId::LookCenter, 10, 0, 0),
+    TimedPose::new(PoseId::LookLeft, 14, -1, 0),
+    TimedPose::new(PoseId::Listen00, 8, 0, 0),
+    TimedPose::new(PoseId::LookRight, 14, 1, 0),
+    TimedPose::new(PoseId::Listen00, 8, 0, 0),
+    TimedPose::new(PoseId::LookCenter, 8, 0, 0),
 ];
 const HAPPY_LOOP: [TimedPose; 4] = [
-    TimedPose::new(PoseId::TailWagLeft, 6, -1, 0),
-    TimedPose::new(PoseId::TailWagRight, 6, 1, 0),
-    TimedPose::new(PoseId::HappyBounce, 7, 0, -2),
-    TimedPose::new(PoseId::TailWagRight, 5, 1, -1),
+    TimedPose::new(PoseId::HappyWag00, 6, -1, 0),
+    TimedPose::new(PoseId::HappyWag02, 5, 0, -2),
+    TimedPose::new(PoseId::HappyWag01, 6, 1, 0),
+    TimedPose::new(PoseId::HappyWag02, 5, 0, -2),
 ];
-const EXCITED_LOOP: [TimedPose; 4] = [
-    TimedPose::new(PoseId::HappyBounce, 5, 0, 0),
-    TimedPose::new(PoseId::ExcitedJump, 5, 0, 1),
-    TimedPose::new(PoseId::HappyBounce, 4, 0, -2),
-    TimedPose::new(PoseId::ExcitedJump, 6, 0, 1),
+const EXCITED_LOOP: [TimedPose; 3] = [
+    TimedPose::new(PoseId::Excited00, 5, 0, 0),
+    TimedPose::new(PoseId::Excited01, 4, 0, -2),
+    TimedPose::new(PoseId::Excited02, 6, 0, 1),
+];
+const PLAY_LOOP: [TimedPose; 2] = [
+    TimedPose::new(PoseId::Play00, 10, 0, 0),
+    TimedPose::new(PoseId::Play01, 10, 1, -1),
+];
+const SLEEPY_LOOP: [TimedPose; 2] = [
+    TimedPose::new(PoseId::Sleepy00, 42, 0, 0),
+    TimedPose::new(PoseId::Sleepy01, 42, 0, 0),
+];
+const NAP_LOOP: [TimedPose; 2] = [
+    TimedPose::new(PoseId::Nap00, 58, 0, 0),
+    TimedPose::new(PoseId::Nap01, 58, 0, 0),
+];
+const WORRIED_LOOP: [TimedPose; 2] = [
+    TimedPose::new(PoseId::Worried00, 28, 0, 0),
+    TimedPose::new(PoseId::Worried01, 28, -1, 0),
+];
+const CONFUSED_LOOP: [TimedPose; 2] = [
+    TimedPose::new(PoseId::Confused00, 18, -1, 0),
+    TimedPose::new(PoseId::Confused01, 18, 1, 0),
 ];
 const ALERT_LOOP: [TimedPose; 2] = [
-    TimedPose::new(PoseId::AlertEarsUp, 7, 0, -1),
-    TimedPose::new(PoseId::Surprised, 7, 0, 0),
+    TimedPose::new(PoseId::Alert00, 7, 0, -1),
+    TimedPose::new(PoseId::Alert01, 7, 0, 0),
+];
+const WALK_RIGHT_LOOP: [TimedPose; 2] = [
+    TimedPose::new(PoseId::WalkRight00, 8, 0, 0),
+    TimedPose::new(PoseId::WalkRight01, 8, 0, -1),
+];
+const WALK_LEFT_LOOP: [TimedPose; 2] = [
+    TimedPose::new(PoseId::WalkLeft00, 8, 0, 0),
+    TimedPose::new(PoseId::WalkLeft01, 8, 0, -1),
 ];
 
 /// Shiro's render state.
@@ -196,21 +234,24 @@ fn frame_for(
     force_alert: bool,
 ) -> SpriteFrame {
     let mut frame = SpriteFrame {
-        pose: PoseId::SittingIdle,
+        pose: PoseId::Idle00,
         x: 0,
         y: wave(global_frame, 1, 0, 1),
         alert_border: force_alert,
     };
 
     match animation {
-        Animation::Idle => {}
+        Animation::Idle => {
+            let timed = timed_pose(anim_frame, &IDLE_LOOP);
+            frame.pose = timed.pose;
+            frame.x = timed.x;
+            frame.y = timed.y;
+        }
         Animation::Blink => {
-            frame.pose = if anim_frame % 18 < 3 {
-                PoseId::Blink
-            } else {
-                PoseId::SittingIdle
-            };
-            frame.y = wave(global_frame, 1, 8, 1);
+            let timed = timed_pose(anim_frame, &BLINK_LOOP);
+            frame.pose = timed.pose;
+            frame.x = timed.x;
+            frame.y = timed.y + wave(global_frame, 1, 8, 1);
         }
         Animation::LookAround => {
             let timed = timed_pose(anim_frame, &LOOK_LOOP);
@@ -219,21 +260,26 @@ fn frame_for(
             frame.y = timed.y + wave(global_frame, 1, 16, 1);
         }
         Animation::Confused => {
-            frame.pose = PoseId::ConfusedHeadTilt;
-            frame.x = wave(anim_frame, 5, 0, 2);
-            frame.y = wave(anim_frame, 2, 16, 1);
+            let timed = timed_pose(anim_frame, &CONFUSED_LOOP);
+            frame.pose = timed.pose;
+            frame.x = timed.x + wave(anim_frame, 5, 0, 1);
+            frame.y = timed.y + wave(anim_frame, 2, 16, 1);
         }
         Animation::Walk => {
             let walk_phase = anim_frame % (WALK_HALF_PERIOD * 2);
             let walk_step = walk_phase % WALK_HALF_PERIOD;
             if walk_phase < WALK_HALF_PERIOD {
-                frame.pose = PoseId::LookingRight;
+                let timed = timed_pose(anim_frame, &WALK_RIGHT_LOOP);
+                frame.pose = timed.pose;
                 frame.x = -18 + (walk_step as i32 * 36) / (WALK_HALF_PERIOD as i32 - 1);
+                frame.y = timed.y;
             } else {
-                frame.pose = PoseId::LookingLeft;
+                let timed = timed_pose(anim_frame, &WALK_LEFT_LOOP);
+                frame.pose = timed.pose;
                 frame.x = 18 - (walk_step as i32 * 36) / (WALK_HALF_PERIOD as i32 - 1);
+                frame.y = timed.y;
             }
-            frame.y = wave_abs(anim_frame, 4, 0, 1);
+            frame.y += wave_abs(anim_frame, 4, 0, 1);
         }
         Animation::Happy => {
             let timed = timed_pose(anim_frame, &HAPPY_LOOP);
@@ -242,9 +288,10 @@ fn frame_for(
             frame.y = timed.y - wave_abs(anim_frame, 4, 16, 1);
         }
         Animation::Play => {
-            frame.pose = PoseId::PawLift;
-            frame.x = wave(anim_frame, 3, 0, 1);
-            frame.y = wave(anim_frame, 4, 16, 1);
+            let timed = timed_pose(anim_frame, &PLAY_LOOP);
+            frame.pose = timed.pose;
+            frame.x = timed.x + wave(anim_frame, 3, 0, 1);
+            frame.y = timed.y + wave(anim_frame, 4, 16, 1);
         }
         Animation::Excited => {
             let timed = timed_pose(anim_frame, &EXCITED_LOOP);
@@ -253,18 +300,22 @@ fn frame_for(
             frame.y = timed.y;
         }
         Animation::Sleepy => {
-            frame.pose = PoseId::RelaxedLoaf;
-            frame.y = 1 + wave(anim_frame, 1, 16, 1);
+            let timed = timed_pose(anim_frame, &SLEEPY_LOOP);
+            frame.pose = timed.pose;
+            frame.x = timed.x;
+            frame.y = 1 + timed.y + wave(anim_frame, 1, 16, 1);
         }
         Animation::Nap => {
-            frame.pose = PoseId::SleepingCurled;
-            frame.x = wave(anim_frame, 1, 0, 1);
-            frame.y = wave(anim_frame, 1, 16, 1);
+            let timed = timed_pose(anim_frame, &NAP_LOOP);
+            frame.pose = timed.pose;
+            frame.x = timed.x + wave(anim_frame, 1, 0, 1);
+            frame.y = timed.y + wave(anim_frame, 1, 16, 1);
         }
         Animation::Worried => {
-            frame.pose = PoseId::SadDroop;
-            frame.x = wave(anim_frame, 3, 0, 1);
-            frame.y = 1 + wave(anim_frame, 1, 16, 1);
+            let timed = timed_pose(anim_frame, &WORRIED_LOOP);
+            frame.pose = timed.pose;
+            frame.x = timed.x + wave(anim_frame, 3, 0, 1);
+            frame.y = 1 + timed.y + wave(anim_frame, 1, 16, 1);
         }
         Animation::Alert => {
             let timed = timed_pose(anim_frame, &ALERT_LOOP);

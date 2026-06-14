@@ -8,6 +8,7 @@ import zlib
 from pathlib import Path
 
 from host.tools.convert_sprite_sheet import convert_sheet, read_rgba_png
+from host.tools.derive_shiro_motion_sheet import SOURCE_SHEET, derive_motion_sheet
 
 
 class SpriteSheetConverterTests(unittest.TestCase):
@@ -70,6 +71,70 @@ class SpriteSheetConverterTests(unittest.TestCase):
         self.assertIn("TailWagLeft = 1", first)
         self.assertIn("pub const PALETTE_RGB565", first)
         self.assertIn("SOLID_RUN_FLAG", first)
+
+    def test_conversion_accepts_multiple_sheet_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            sheet_a = root / "a.png"
+            sheet_b = root / "b.png"
+            metadata = root / "multi.json"
+            output = root / "multi.rs"
+            _write_rgba_png(
+                sheet_a,
+                2,
+                1,
+                [(255, 255, 255, 255), (0, 0, 0, 0)],
+            )
+            _write_rgba_png(
+                sheet_b,
+                2,
+                1,
+                [(0, 0, 0, 255), (255, 0, 0, 255)],
+            )
+            metadata.write_text(
+                json.dumps(
+                    {
+                        "name": "multi",
+                        "cell_width": 1,
+                        "cell_height": 1,
+                        "sheets": [
+                            {
+                                "sheet": "a.png",
+                                "columns": 2,
+                                "rows": 1,
+                                "poses": ["idle_00", "idle_01"],
+                            },
+                            {
+                                "sheet": "b.png",
+                                "columns": 2,
+                                "rows": 1,
+                                "poses": ["walk_right_00", "walk_right_01"],
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            stats = convert_sheet(sheet_a, metadata, output)
+            rust = output.read_text(encoding="utf-8")
+
+        self.assertEqual(stats.sprite_count, 4)
+        self.assertIn("Idle00 = 0", rust)
+        self.assertIn("WalkRight01 = 3", rust)
+        self.assertIn("Source sheets:", rust)
+
+
+class MotionSheetDerivationTests(unittest.TestCase):
+    def test_derivation_writes_and_checks_motion_sheet(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "motion.png"
+
+            derive_motion_sheet(SOURCE_SHEET, output)
+            image = read_rgba_png(output)
+            derive_motion_sheet(SOURCE_SHEET, output, check=True)
+
+        self.assertEqual((image.width, image.height), (512, 512))
 
 
 def _write_rgba_png(path: Path, width: int, height: int, pixels: list[tuple[int, int, int, int]]) -> None:

@@ -1,28 +1,55 @@
 {
   "name": "shiro",
-  "sheet": "shiro_sheet_4x4_128.png",
   "source": "shiro_sheet.png",
-  "columns": 4,
-  "rows": 4,
   "cell_width": 128,
   "cell_height": 128,
   "background": "transparent",
-  "poses": [
-    "sitting_idle",
-    "blink",
-    "happy_bounce",
-    "tail_wag_left",
-    "tail_wag_right",
-    "sleeping_curled",
-    "alert_ears_up",
-    "confused_head_tilt",
-    "sad_droop",
-    "excited_jump",
-    "listening",
-    "looking_left",
-    "looking_right",
-    "paw_lift",
-    "surprised",
-    "relaxed_loaf"
+  "sheets": [
+    {
+      "sheet": "shiro_sheet_4x4_128.png",
+      "columns": 4,
+      "rows": 4,
+      "poses": [
+        "idle_00",
+        "blink_01",
+        "excited_01",
+        "happy_wag_00",
+        "happy_wag_01",
+        "nap_00",
+        "alert_00",
+        "confused_00",
+        "worried_00",
+        "excited_02",
+        "listen_00",
+        "look_left",
+        "look_right",
+        "play_00",
+        "alert_01",
+        "sleepy_00"
+      ]
+    },
+    {
+      "sheet": "shiro_motion_4x4_128.png",
+      "columns": 4,
+      "rows": 4,
+      "poses": [
+        "idle_01",
+        "idle_02",
+        "blink_00",
+        "blink_02",
+        "look_center",
+        "happy_wag_02",
+        "excited_00",
+        "play_01",
+        "sleepy_01",
+        "nap_01",
+        "worried_01",
+        "confused_01",
+        "walk_left_00",
+        "walk_left_01",
+        "walk_right_00",
+        "walk_right_01"
+      ]
+    }
   ]
 }
