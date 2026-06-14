@@ -290,6 +290,29 @@ Useful flags:
 - `--engaged-window-seconds 90` — how long after a direct interaction Shiro still feels engaged
 - `--focus-jealousy-seconds 1200` — heads-down time on one app before Shiro gets a little jealous
 
+## Recording a demo
+
+For a controlled test to drive Shiro through a fixed sequence of poses with `host/tools/demo_driver.py`. It bypasses the model
+and the pet loop and sends behavior frames straight to the device, holding each pose with a background heartbeat (a behavior frame only stays on screen for its `duration_ms`, and the device socket times out after ~30 s of silence, so the driver re-sends the current frame to keep the pose up).
+
+```bash
+# Manual mode (default): each beat holds until you press Enter — best for filming
+uv run python -m host.tools.demo_driver --device-host 192.168.1.50
+
+# Auto-advance using each beat's hold time, looped for a continuous take
+uv run python -m host.tools.demo_driver --device-host 192.168.1.50 --mode auto --loop
+
+# Inspect/validate the built-in sequence without any hardware
+uv run python -m host.tools.demo_driver --list
+```
+
+Manual controls: `Enter` advances, `r` replays the current beat, `b` steps back,
+a number jumps to that beat, and `q` quits (leaving Shiro idle). The built-in
+`hero` sequence tells a "you leave → Shiro misses you → you come back → boop"
+story and prints a film/voiceover/caption cue for each beat; `--sequence tour`
+plays every animation once. Supply `--sequence-file PATH` (a JSON list of step
+objects) for a fully custom script, and `--dry-run` to rehearse offline.
+
 ## Shiro's mind: needs, presence, and memory
 
 When the loop runs it keeps a small but persistent inner life (host-only; the
