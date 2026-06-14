@@ -73,13 +73,14 @@ const TOUCH_SAMPLE_MS: u64 = 5;
 /// touches while the host is briefly unavailable can never block sampling.
 const INPUT_QUEUE_LEN: usize = 8;
 /// Length of the local touch acknowledgement played when no host is connected.
-const LOCAL_ACK_DURATION_MS: u32 = 1_200;
+const LOCAL_ACK_DURATION_MS: u32 = 2_500;
 
 type WifiDevice = wifi::Interface<'static>;
 type NetRunner = Runner<'static, WifiDevice>;
 
 static STACK_RESOURCES: StaticCell<StackResources<NET_STACK_SOCKETS>> = StaticCell::new();
 static PENDING_BEHAVIOR: Mutex<RefCell<Option<BehaviorUpdate>>> = Mutex::new(RefCell::new(None));
+static LOCAL_ACK_COUNTER: Mutex<RefCell<u8>> = Mutex::new(RefCell::new(0));
 static SOCKET_RX_BUF: StaticCell<[u8; SOCKET_BUF_LEN]> = StaticCell::new();
 static SOCKET_TX_BUF: StaticCell<[u8; SOCKET_BUF_LEN]> = StaticCell::new();
 static FRAME_BUF: StaticCell<[u8; behavior::FRAME_CAPACITY]> = StaticCell::new();
@@ -435,19 +436,40 @@ fn enqueue_input(gesture: Gesture) {
 }
 
 /// A short, host-independent reaction so a touch still feels acknowledged while
-/// the host link is down. Uses only the existing idle-capable animations.
+/// the host link is down.
 fn local_ack(gesture: Gesture) -> BehaviorUpdate {
-    let (mood, animation) = match gesture {
-        Gesture::DoubleTap => (Mood::Curious, Animation::LookAround),
-        Gesture::Tap | Gesture::Hold { .. } => (Mood::Calm, Animation::Blink),
-    };
+    let text = touch_ack_text(gesture, next_local_ack_index());
     BehaviorUpdate {
-        mood,
-        animation,
-        text: None,
+        mood: Mood::Curious,
+        animation: Animation::Confused,
+        text,
         alert: false,
         duration_ms: LOCAL_ACK_DURATION_MS,
     }
+}
+
+fn next_local_ack_index() -> u8 {
+    critical_section::with(|cs| {
+        let mut counter = LOCAL_ACK_COUNTER.borrow(cs).borrow_mut();
+        let index = *counter;
+        *counter = counter.wrapping_add(1);
+        index
+    })
+}
+
+fn touch_ack_text(
+    gesture: Gesture,
+    index: u8,
+) -> Option<heapless::String<{ behavior::TEXT_CAPACITY }>> {
+    let options: &[&str] = match gesture {
+        Gesture::Tap => &["who you?", "new hand?", "huh? you?", "boop ghost?"],
+        Gesture::Hold { .. } => &["human? there?", "still you?", "hand there?", "hello hand?"],
+        Gesture::DoubleTap => &["whoa? whoa?", "two boops?", "wait what?", "again??"],
+    };
+    let phrase = options[index as usize % options.len()];
+    let mut text = heapless::String::<{ behavior::TEXT_CAPACITY }>::new();
+    text.push_str(phrase).ok()?;
+    Some(text)
 }
 
 fn queue_behavior_update(update: BehaviorUpdate) {

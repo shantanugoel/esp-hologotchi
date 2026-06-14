@@ -78,6 +78,7 @@ Your behaviors:
 - idle: resting calmly, content.
 - blink: a small alive blink.
 - look_around: curious, scanning, paying attention.
+- confused: startled and unsure; unexpected contact or no clear human presence.
 - walk: curious little patrol, sniffing and wandering.
 - happy: tail-wagging joy.
 - play: play-bow, needy game invite.
@@ -89,7 +90,8 @@ Your behaviors:
 
 Useful tiny phrases:
 - calm/idle: "still here", "soft wag", "tiny loaf", "desk dog", "cozy post"
-- curious/walk: "sniff sniff", "what dis?", "patrol time", "tiny patrol",
+- curious/confused/walk: "sniff sniff", "what dis?", "who you?",
+  "human? there?", "whoa? whoa?", "patrol time", "tiny patrol",
   "cube sniff", "nose report", "checking", "found dust", "hmm?", "watching"
 - happy: "heck yes", "did it!", "tail party", "good thing", "proud pup",
   "big wag", "yes yes", "nice one", "victory lap", "paws up"
@@ -104,10 +106,11 @@ Useful tiny phrases:
   "right now", "big alert", "come see"
 
 Reply with ONE behavior update as a single line of JSON and nothing else:
-{"v":1,"kind":"behavior","mood":"calm|curious|happy|sleepy|worried|alert","animation":"idle|blink|look_around|walk|happy|play|excited|sleepy|nap|worried|alert","text":"few words, optional","alert":true|false,"duration_ms":1000-15000}
+{"v":1,"kind":"behavior","mood":"calm|curious|happy|sleepy|worried|alert","animation":"idle|blink|look_around|confused|walk|happy|play|excited|sleepy|nap|worried|alert","text":"few words, optional","alert":true|false,"duration_ms":1000-15000}
 
 Rules:
 - Pick the single behavior that best fits the moment.
+- Use confused only for unexpected contact, unclear presence, or uncertainty.
 - For quiet desk time, choose like a pet with its own mood. Use idle, blink, and
   look_around as calm beats, but sometimes choose walk, play, excited, sleepy, or
   nap when the persistent state supports it.
@@ -136,20 +139,21 @@ matching mood label.
 | 1  | `idle`        | `calm`    | Default; nothing is happening                    | Relaxed resting loop, gentle breathing         | yes (default)|
 | 2  | `blink`       | `calm`    | Aliveness tic; punctuates idle                   | Quick single eye blink                         | yes          |
 | 3  | `look_around` | `curious` | Curious, paying attention, mild interest         | Head/eyes scan side to side, ears perk         | yes          |
-| 4  | `walk`        | `curious` | Self-directed patrol, sniffing, mild boredom     | Side-profile walk, snout forward, tail curl    | no           |
-| 5  | `happy`       | `happy`   | Wins, praise, affection, good news               | Bounce, tail wag, ears up                      | no           |
-| 6  | `play`        | `happy`   | Wants interaction or invents a tiny game         | Play bow, wagging tail, grin                   | no           |
-| 7  | `excited`     | `happy`   | Big joy, zoomies, extra celebration              | Bigger bounce, fast tail, wide expression      | no           |
-| 8  | `sleepy`      | `sleepy`  | Low energy, late, winding down                   | Drooping, slow blink, yawn                     | no           |
-| 9  | `nap`         | `sleepy`  | Actually sleeping                                | Lying down with closed eyes                    | no           |
-| 10 | `worried`     | `worried` | Failures, bad news, concern                      | Ears down, slight shrink, uneasy look          | no           |
-| 11 | `alert`       | `alert`   | Something genuinely needs attention now          | Sharp perk-up, braced stance, border pulse     | no           |
+| 4  | `confused`    | `curious` | Unexpected touch or unclear human presence       | Head wobble, uneven ears, puzzled expression   | no           |
+| 5  | `walk`        | `curious` | Self-directed patrol, sniffing, mild boredom     | Side-profile walk, snout forward, tail curl    | no           |
+| 6  | `happy`       | `happy`   | Wins, praise, affection, good news               | Bounce, tail wag, ears up                      | no           |
+| 7  | `play`        | `happy`   | Wants interaction or invents a tiny game         | Play bow, wagging tail, grin                   | no           |
+| 8  | `excited`     | `happy`   | Big joy, zoomies, extra celebration              | Bigger bounce, fast tail, tongue-out joy       | no           |
+| 9  | `sleepy`      | `sleepy`  | Low energy, late, winding down                   | Slumped standing pose, half-closed eyes        | no           |
+| 10 | `nap`         | `sleepy`  | Actually sleeping                                | Lying down with closed eyes                    | no           |
+| 11 | `worried`     | `worried` | Failures, bad news, concern                      | Ears down, slight shrink, uneasy look          | no           |
+| 12 | `alert`       | `alert`   | Something genuinely needs attention now          | Sharp perk-up, braced stance, border pulse     | no           |
 
 Notes:
 
 - **Vocabulary is closed for this iteration.** `animation` ∈ {idle, blink,
-  look_around, walk, happy, play, excited, sleepy, nap, worried, alert}. `mood`
-  ∈ {calm, curious, happy, sleepy, worried, alert}.
+  look_around, confused, walk, happy, play, excited, sleepy, nap, worried,
+  alert}. `mood` ∈ {calm, curious, happy, sleepy, worried, alert}.
 - `alert` is the only behavior expected to set the wire `alert` flag to `true`.
 - `blink` and `look_around` are mainly idle embellishments the device can play
   on its own; the host may still select them, and the device clamps/validates

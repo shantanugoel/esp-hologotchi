@@ -304,6 +304,24 @@ def _idle_generator(prompts: list[str]):
     return fake_generate
 
 
+def _body_situation(state: object):
+    from host.body import BodySituation, BodyState
+
+    body_state = state if isinstance(state, BodyState) else BodyState.AWAKE
+    return BodySituation(
+        state=body_state,
+        seconds_in_state=0.0,
+        asleep_seconds=0.0,
+        min_nap_elapsed=False,
+        sleep_pressure=False,
+        wake_trigger=False,
+        late_night=False,
+        allowed_states=(body_state,),
+        allowed_animations=("idle",),
+        default_state=body_state,
+    )
+
+
 class PetLoopPsychologyTests(unittest.TestCase):
     def test_being_ignored_grows_loneliness_over_real_time(self) -> None:
         from host.pet_loop import run_pet_loop as _run
@@ -909,6 +927,75 @@ class PetLoopV2aTests(unittest.TestCase):
 
 
 class PetLoopTouchTests(unittest.TestCase):
+    def test_touch_ack_uses_confused_without_presence(self) -> None:
+        from host.body import BodyState
+        from host.pet_loop import _LoopEvent, _touch_ack_behavior
+
+        behavior = _touch_ack_behavior(
+            _LoopEvent(
+                id="touch-4",
+                source="touch",
+                event="Touch input: a quick boop tap to say hello.",
+                gesture="tap",
+            ),
+            has_presence=False,
+            body=_body_situation(BodyState.AWAKE),
+        )
+
+        self.assertEqual(behavior.animation, "confused")
+        self.assertEqual(behavior.text, "who you?")
+
+    def test_touch_ack_uses_excited_when_present_and_awake(self) -> None:
+        from host.body import BodyState
+        from host.pet_loop import _LoopEvent, _touch_ack_behavior
+
+        behavior = _touch_ack_behavior(
+            _LoopEvent(
+                id="touch-2",
+                source="touch",
+                event="Touch input: a double-tap play invite.",
+                gesture="doubletap",
+            ),
+            has_presence=True,
+            body=_body_situation(BodyState.AWAKE),
+        )
+
+        self.assertEqual(behavior.animation, "excited")
+        self.assertIn("love", behavior.text or "")
+
+    def test_touch_ack_uses_sleepy_when_present_and_sleeping(self) -> None:
+        from host.body import BodyState
+        from host.pet_loop import _LoopEvent, _touch_ack_behavior
+
+        behavior = _touch_ack_behavior(
+            _LoopEvent(
+                id="touch-4",
+                source="touch",
+                event="Touch input: a quick boop tap to say hello.",
+                gesture="tap",
+            ),
+            has_presence=True,
+            body=_body_situation(BodyState.SLEEPING),
+        )
+
+        self.assertEqual(behavior.animation, "sleepy")
+        self.assertEqual(behavior.text, "let me sleep")
+
+    def test_invalid_touch_model_output_falls_back_to_confused(self) -> None:
+        from host.pet_loop import _LoopEvent, _fallback_behavior
+
+        behavior = _fallback_behavior(
+            _LoopEvent(
+                id="touch-1",
+                source="touch",
+                event="Touch input: a quick boop tap to say hello.",
+                gesture="tap",
+            )
+        )
+
+        self.assertEqual(behavior.animation, "confused")
+        self.assertEqual(behavior.text, "???")
+
     def test_touch_effect_dispatch_is_gesture_specific(self) -> None:
         from host.affect import Affect
         from host.pet_loop import _apply_touch_effects

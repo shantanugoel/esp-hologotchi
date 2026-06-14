@@ -85,6 +85,7 @@ enum BodyPose {
     Sit,
     Walk,
     PlayBow,
+    DrowsyStand,
     LieDown,
     AlertStance,
 }
@@ -105,6 +106,7 @@ enum MouthStyle {
     Flat,
     Frown,
     Yawn,
+    Tongue,
 }
 
 impl Default for Scene {
@@ -232,6 +234,16 @@ fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_aler
             pose.hy = -1;
             pose.ear_drop = -2;
         }
+        Animation::Confused => {
+            let wobble = wave(anim_frame, 3, 0, 4);
+            pose.hx = wobble;
+            pose.hy = wave(anim_frame, 2, 16, 1);
+            pose.ear_drop = if anim_frame % 40 < 20 { 7 } else { -2 };
+            pose.ear_spread = 5;
+            pose.eye_shift = -wobble;
+            pose.eye_y = if anim_frame % 36 < 18 { -1 } else { 1 };
+            pose.mouth = MouthStyle::Flat;
+        }
         Animation::Walk => {
             pose.body_pose = BodyPose::Walk;
             let walk_phase = anim_frame % (WALK_HALF_PERIOD * 2);
@@ -282,23 +294,22 @@ fn pose_for(animation: Animation, global_frame: u32, anim_frame: u32, force_aler
             pose.tail_y = -wave_abs(anim_frame, 6, 0, 5);
             pose.ear_drop = -7;
             pose.eye_y = -2;
-            pose.mouth = MouthStyle::Grin;
+            pose.mouth = MouthStyle::Tongue;
         }
         Animation::Sleepy => {
-            pose.oy += 2;
-            pose.hy += 2;
-            pose.ear_drop = 7;
-            pose.ear_spread = 5;
-            pose.eye_style = if anim_frame % 54 < 5 {
+            pose.body_pose = BodyPose::DrowsyStand;
+            pose.oy += 4;
+            pose.hy += 7 + wave_abs(anim_frame, 1, 0, 1);
+            pose.tail_x = -5;
+            pose.tail_y = 6;
+            pose.ear_drop = 8;
+            pose.ear_spread = 6;
+            pose.eye_style = if anim_frame % 72 < 6 {
                 EyeStyle::Blink
             } else {
                 EyeStyle::Sleepy
             };
-            pose.mouth = if (18..30).contains(&(anim_frame % 96)) {
-                MouthStyle::Yawn
-            } else {
-                MouthStyle::Flat
-            };
+            pose.mouth = MouthStyle::Flat;
         }
         Animation::Nap => {
             pose.body_pose = BodyPose::LieDown;
@@ -363,7 +374,7 @@ where
     match pose.body_pose {
         BodyPose::Walk => return draw_walking_mochi(target, pose),
         BodyPose::LieDown => return draw_lying_mochi(target, pose),
-        BodyPose::Sit | BodyPose::PlayBow | BodyPose::AlertStance => {}
+        BodyPose::Sit | BodyPose::PlayBow | BodyPose::DrowsyStand | BodyPose::AlertStance => {}
     }
     draw_body(target, pose, body_ox, body_oy, tail_ox, tail_oy)?;
 
@@ -469,6 +480,37 @@ where
             fill_round_rect(target, 58 + body_ox, 103 + body_oy, 14, 26, 7, CREAM)?;
             fill_round_rect(target, 84 + body_ox, 92 + body_oy, 15, 35, 7, ORANGE)?;
             fill_round_rect(target, 91 + body_ox, 95 + body_oy, 12, 32, 6, CREAM)?;
+        }
+        BodyPose::DrowsyStand => {
+            fill_circle(target, 99 + tail_ox, 93 + tail_oy, 24, ORANGE)?;
+            stroke_circle(target, 100 + tail_ox, 94 + tail_oy, 11, ORANGE_DK, 3)?;
+            fill_circle(target, 100 + tail_ox, 94 + tail_oy, 4, CREAM)?;
+
+            fill_ellipse(target, 64 + body_ox, 101 + body_oy, 54, 56, ORANGE)?;
+            fill_ellipse(target, 64 + body_ox, 106 + body_oy, 36, 38, CREAM)?;
+            fill_round_rect(target, 41 + body_ox, 94 + body_oy, 13, 34, 6, CREAM)?;
+            fill_round_rect(target, 74 + body_ox, 94 + body_oy, 13, 34, 6, CREAM)?;
+            stroke_line(
+                target,
+                pt(64, 112, body_ox, body_oy),
+                pt(64, 128, body_ox, body_oy),
+                2,
+                ORANGE_DK,
+            )?;
+            stroke_line(
+                target,
+                pt(47, 119, body_ox, body_oy),
+                pt(47, 128, body_ox, body_oy),
+                2,
+                ORANGE_DK,
+            )?;
+            stroke_line(
+                target,
+                pt(81, 119, body_ox, body_oy),
+                pt(81, 128, body_ox, body_oy),
+                2,
+                ORANGE_DK,
+            )?;
         }
         BodyPose::AlertStance => {
             fill_circle(target, 102 + tail_ox, 84 + tail_oy, 27, ORANGE)?;
@@ -904,6 +946,13 @@ where
             stroke_line(target, pt(64, 71, ox, oy), pt(64, 75, ox, oy), 2, NAVY)?;
             fill_ellipse(target, 64 + ox, 79 + oy, 12, 10, NAVY)?;
             fill_ellipse(target, 64 + ox, 80 + oy, 7, 5, BLUSH)?;
+        }
+        MouthStyle::Tongue => {
+            stroke_line(target, pt(64, 71, ox, oy), pt(64, 77, ox, oy), 2, NAVY)?;
+            stroke_line(target, pt(64, 77, ox, oy), pt(55, 81, ox, oy), 3, NAVY)?;
+            stroke_line(target, pt(64, 77, ox, oy), pt(73, 81, ox, oy), 3, NAVY)?;
+            fill_round_rect(target, 60 + ox, 79 + oy, 8, 12, 4, PINK)?;
+            stroke_line(target, pt(64, 81, ox, oy), pt(64, 88, ox, oy), 1, BLUSH)?;
         }
     }
 

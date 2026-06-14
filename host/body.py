@@ -41,8 +41,12 @@ SLEEP_ANIMATIONS: tuple[str, ...] = ("nap", "sleepy", "blink")
 # Gentle mid-sleep beats: kept as-is while already asleep so a long nap does not
 # keep re-applying deep-nap affect recovery (see _clamp_behavior).
 _SLEEP_BEAT = frozenset({"sleepy", "blink"})
-DROWSY_ANIMATIONS: tuple[str, ...] = ("sleepy", "nap", "blink", "look_around", "idle")
-WAKING_ANIMATIONS: tuple[str, ...] = ("sleepy", "blink", "look_around", "idle")
+DROWSY_ANIMATIONS: tuple[str, ...] = (
+    "sleepy", "nap", "blink", "look_around", "confused", "idle",
+)
+WAKING_ANIMATIONS: tuple[str, ...] = (
+    "sleepy", "blink", "look_around", "confused", "idle",
+)
 
 _ANIMATIONS_FOR_STATE: dict[BodyState, tuple[str, ...]] = {
     BodyState.SLEEPING: SLEEP_ANIMATIONS,
@@ -58,7 +62,7 @@ _DEFAULT_ANIMATION: dict[BodyState, str] = {
 # Canonical render order so prompt lists are stable. ``alert`` is included so it
 # can be offered in the (rare) alert context; it is filtered out otherwise.
 _CANONICAL_ANIMATIONS: tuple[str, ...] = (
-    "idle", "blink", "look_around", "walk", "happy",
+    "idle", "blink", "look_around", "confused", "walk", "happy",
     "play", "excited", "sleepy", "nap", "worried", "alert",
 )
 

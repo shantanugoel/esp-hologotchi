@@ -36,6 +36,15 @@ class ProtocolValidationTests(unittest.TestCase):
         self.assertEqual(behavior.animation, "play")
         self.assertEqual(behavior.text, "play?")
 
+    def test_accepts_confused_behavior(self) -> None:
+        behavior = parse_behavior_response(
+            '{"v":1,"kind":"behavior","mood":"curious","animation":"confused","text":"who you?","alert":false,"duration_ms":2500}'
+        )
+
+        self.assertEqual(behavior.mood, "curious")
+        self.assertEqual(behavior.animation, "confused")
+        self.assertEqual(behavior.text, "who you?")
+
     def test_accepts_behavior_wrapped_by_model_text(self) -> None:
         behavior = parse_behavior_response(
             '<think>Build status means Mochi should celebrate.</think>\n'

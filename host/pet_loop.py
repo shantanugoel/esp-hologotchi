@@ -34,6 +34,7 @@ Clock = Callable[[], float]
 IDLE_CAPABLE_ANIMATIONS = frozenset({"idle", "blink", "look_around"})
 IDLE_LOOP_DURATION_MS = 3000
 WALK_MIN_DURATION_MS = 6500
+TOUCH_ACK_DURATION_MS = 8000
 PRESENCE_SIGNAL_SOURCE = "presence_signal"
 # Hold the device socket open through long idle/nap waits (device times out at
 # 30s); send a bare-newline keepalive comfortably under that.
@@ -140,6 +141,11 @@ def run_pet_loop(
                 if signal_mailbox is not None
                 else PresenceSignals()
             )
+            touch_has_presence = (
+                pending is not None
+                and pending.source == TOUCH_SOURCE
+                and _has_presence_evidence(signals, presence)
+            )
             if pending is not None and pending.source in ENGAGEMENT_SOURCES:
                 presence.note_interaction(now_ts)
 
@@ -179,6 +185,20 @@ def run_pet_loop(
                 event_source=event.source,
                 local_hour=_local_hour(now_ts),
             )
+            if client is not None and event.source == TOUCH_SOURCE:
+                try:
+                    client.send(
+                        _touch_ack_behavior(
+                            event,
+                            has_presence=touch_has_presence,
+                            body=body_situation,
+                        )
+                    )
+                except TransportError as exc:
+                    if log_events:
+                        _log_loop_error(err, event, f"device unavailable: {exc}")
+                    else:
+                        print(f"device unavailable: {exc}", file=err, flush=True)
 
             if memory is not None:
                 _capture_memory(memory, event, report, pet_state.affect)
@@ -614,6 +634,14 @@ def _fallback_behavior(event: _LoopEvent) -> BehaviorCommand:
             alert=True,
             duration_ms=6500,
         )
+    if event.source == TOUCH_SOURCE:
+        return BehaviorCommand(
+            mood=ANIMATION_TO_MOOD["confused"],
+            animation="confused",
+            text="???",
+            alert=False,
+            duration_ms=4000,
+        )
 
     return BehaviorCommand(
         mood="calm",
@@ -622,6 +650,69 @@ def _fallback_behavior(event: _LoopEvent) -> BehaviorCommand:
         alert=False,
         duration_ms=5000,
     )
+
+
+def _has_presence_evidence(signals: PresenceSignals, presence: PresenceTracker) -> bool:
+    if signals.present is True:
+        return True
+    if signals.present is False or signals.screen_locked is True:
+        return False
+    if signals.idle_seconds is not None:
+        return signals.idle_seconds < presence.config.away_idle_seconds
+    if signals.screen_locked is False or signals.foreground_app:
+        return True
+    return False
+
+
+def _touch_ack_behavior(
+    event: _LoopEvent, *, has_presence: bool, body: BodySituation
+) -> BehaviorCommand:
+    if not has_presence:
+        animation = "confused"
+        text = _touch_text(event, _NO_PRESENCE_TOUCH_TEXT)
+    elif body.state is BodyState.SLEEPING:
+        animation = "sleepy"
+        text = _touch_text(event, _SLEEP_TOUCH_TEXT)
+    else:
+        animation = "excited"
+        text = _touch_text(event, _LOVE_TOUCH_TEXT)
+    return BehaviorCommand(
+        mood=ANIMATION_TO_MOOD[animation],
+        animation=animation,
+        text=text,
+        alert=False,
+        duration_ms=TOUCH_ACK_DURATION_MS,
+    )
+
+
+_NO_PRESENCE_TOUCH_TEXT: dict[str, tuple[str, ...]] = {
+    "tap": ("who you?", "new hand?", "huh? you?", "boop ghost?"),
+    "hold": ("human? there?", "still you?", "hand there?", "hello hand?"),
+    "doubletap": ("whoa? whoa?", "two boops?", "wait what?", "again??"),
+}
+_LOVE_TOUCH_TEXT: dict[str, tuple[str, ...]] = {
+    "tap": ("love!", "luv you", "big love", "tail love"),
+    "hold": ("love you", "soft love", "warm love", "best human"),
+    "doubletap": ("love love", "boop love", "more love", "yes love"),
+}
+_SLEEP_TOUCH_TEXT: dict[str, tuple[str, ...]] = {
+    "tap": ("let me sleep", "sleep pls", "five more", "zzz pls"),
+    "hold": ("still eepy", "sleepy pls", "dreaming", "soft sleep"),
+    "doubletap": ("no zoomies", "zzz zoomies", "later pls", "eepy eepy"),
+}
+
+
+def _touch_text(event: _LoopEvent, options: dict[str, tuple[str, ...]]) -> str:
+    gesture = event.gesture if event.gesture in options else "tap"
+    choices = options[gesture]
+    return choices[_event_index(event.id) % len(choices)]
+
+
+def _event_index(input_id: str) -> int:
+    try:
+        return int(input_id.rsplit("-", 1)[1])
+    except (IndexError, ValueError):
+        return 0
 
 
 def _next_event(

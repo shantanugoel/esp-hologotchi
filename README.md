@@ -108,7 +108,7 @@ Device Wi-Fi and control-socket settings are kept in a **local, git-ignored TOML
 `device/.cargo/config.toml` already sets the runner to `espflash flash --monitor --chip esp32c3`.
 
 > [!IMPORTANT]
-> `device/hologotchi.local.toml` is read by `device/build.rs` at build time. If you change it, rebuild and reflash the firmware.
+> `device/hologotchi.toml` is read by `device/build.rs` at build time. If you change it, rebuild and reflash the firmware.
 
 ## Touch hardware (TTP223)
 

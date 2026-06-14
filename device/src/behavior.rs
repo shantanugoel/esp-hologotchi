@@ -43,6 +43,7 @@ pub enum Animation {
     Idle,
     Blink,
     LookAround,
+    Confused,
     Walk,
     Happy,
     Play,
@@ -142,6 +143,7 @@ fn mood_matches_animation(mood: Mood, animation: Animation) -> bool {
         (Mood::Calm, Animation::Idle)
             | (Mood::Calm, Animation::Blink)
             | (Mood::Curious, Animation::LookAround)
+            | (Mood::Curious, Animation::Confused)
             | (Mood::Curious, Animation::Walk)
             | (Mood::Happy, Animation::Happy)
             | (Mood::Happy, Animation::Play)
