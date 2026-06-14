@@ -1,0 +1,28 @@
+{
+  "name": "shiro",
+  "sheet": "shiro_sheet_4x4_128.png",
+  "source": "shiro_sheet.png",
+  "columns": 4,
+  "rows": 4,
+  "cell_width": 128,
+  "cell_height": 128,
+  "background": "transparent",
+  "poses": [
+    "sitting_idle",
+    "blink",
+    "happy_bounce",
+    "tail_wag_left",
+    "tail_wag_right",
+    "sleeping_curled",
+    "alert_ears_up",
+    "confused_head_tilt",
+    "sad_droop",
+    "excited_jump",
+    "listening",
+    "looking_left",
+    "looking_right",
+    "paw_lift",
+    "surprised",
+    "relaxed_loaf"
+  ]
+}
